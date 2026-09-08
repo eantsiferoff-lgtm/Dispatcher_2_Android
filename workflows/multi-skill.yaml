@@ -1,0 +1,9 @@
+name: generic-multi-skill
+input: user_request
+steps:
+  - dispatcher: classify_goal
+  - registry: select_skills
+  - orchestrator: build_dependency_graph
+  - executor: run_skills_and_tools
+  - verifier: check_result
+  - output: deliver_ready_result

@@ -1,0 +1,14 @@
+version: "2.0"
+name: personal-skill-dispatcher
+role: master-router
+registry: registry.yaml
+routing: routing.yaml
+orchestration:
+  allow_multi_skill: true
+  max_parallel_skills: 4
+  prefer_specific_skill: true
+  preserve_project_context: true
+verification:
+  required: true
+  check_conflicts: true
+  distinguish_facts_calculations_assumptions: true

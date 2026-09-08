@@ -1,0 +1,18 @@
+version: "1.0"
+role: external-tool-gateway
+transport: mcp_or_api
+principles:
+  - keep_composio_out_of_domain_logic
+  - discover_tools_at_runtime_when_possible
+  - require_explicit_confirmation_for_consequential_actions
+  - never store secrets in skill files
+connections:
+  gmail:
+    capabilities: [send_email, search_email]
+  google_drive:
+    capabilities: [search_files, create_file]
+  github:
+    capabilities: [issues, pull_requests, repository_actions]
+  slack:
+    capabilities: [send_message, search_messages]
+future_connections: []

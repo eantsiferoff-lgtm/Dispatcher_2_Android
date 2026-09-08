@@ -1,0 +1,31 @@
+version: "2.0"
+skills:
+  - id: workflow-dispatcher
+    path: skills/workflow-dispatcher/SKILL.md
+    priority: 100
+    role: router
+  - id: 1c-ut-documents
+    path: skills/1c-ut-documents/SKILL.md
+    priority: 90
+  - id: pharmacy-and-supplements
+    path: skills/pharmacy-and-supplements/SKILL.md
+    priority: 90
+  - id: russian-investment-analysis
+    path: skills/russian-investment-analysis/SKILL.md
+    priority: 90
+  - id: official-documents
+    path: skills/official-documents/SKILL.md
+    priority: 90
+  - id: grants-and-project-applications
+    path: skills/grants-and-project-applications/SKILL.md
+    priority: 90
+  - id: travel-local-search
+    path: skills/travel-local-search/SKILL.md
+    priority: 90
+  - id: image-editing-workflow
+    path: skills/image-editing-workflow/SKILL.md
+    priority: 90
+  - id: file-project-analysis
+    path: skills/file-project-analysis/SKILL.md
+    priority: 95
+  # Add future skills here; dispatcher core does not change.

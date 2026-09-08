@@ -1,0 +1,14 @@
+name: market-report-to-email
+steps:
+  - skill: russian-investment-analysis
+    output: market_analysis
+  - skill: file-project-analysis
+    condition: "source_files_present"
+    output: reconciled_context
+  - skill: report_generator
+    condition: "report_requested"
+    output: report
+  - tool: composio.gmail
+    condition: "user_requested_email"
+    action: send_email
+    confirmation: required

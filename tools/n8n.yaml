@@ -1,0 +1,6 @@
+version: "1.0"
+role: workflow-execution-gateway
+principles:
+  - use_for_long_running_or_multi-step_automation
+  - return execution_status_and_errors
+  - keep_credentials_out_of_repository
