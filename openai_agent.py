@@ -6,8 +6,8 @@ from composio import Composio
 from composio_openai_agents import OpenAIAgentsProvider
 from core.router import Dispatcher
 
-load_dotenv()
 ROOT = Path(__file__).resolve().parent
+load_dotenv(ROOT / '.env')
 
 BASE = '''You are the Personal Skill Dispatcher.
 Route each request through the registered domain skills before acting.

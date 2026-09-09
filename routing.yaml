@@ -2,27 +2,24 @@ version: "2.0"
 rules:
   - when: ["invoice", "UPD", "UTD", "waybill", "1C", "УТ 8.3", "счет-фактура"]
     skills: [1c-ut-documents]
-  - when: ["лекарство", "витамины", "БАД", "аптека", "аналог", "цена препарата"]
+
+  - when: ["лекарство", "витамины", "БАД", "аптека", "аналог", "цена препарата", "препарат", "медикамент", "медикаменты", "лекарственные препараты"]
     skills: [pharmacy-and-supplements]
-  - when: ["акции", "облигации", "дивиденды", "голубые фишки", "МОEX", "портфель"]
+
+  - when: ["акции", "облигации", "дивиденды", "голубые фишки", "МОEX", "ММВБ", "портфель", "фондовый рынок", "рынок акций", "российский фондовый рынок", "российский рынок акций", "инвестиции"]
     skills: [russian-investment-analysis]
+
   - when: ["заявление", "жалоба", "письмо", "обращение", "официальный документ"]
     skills: [official-documents]
+
   - when: ["грант", "конкурс", "проектная заявка", "муниципальный проект"]
     skills: [grants-and-project-applications]
+
   - when: ["отель", "ресторан", "аптека рядом", "магазин", "маршрут", "Стамбул"]
     skills: [travel-local-search]
+
   - when: ["фото", "изображение", "открытка", "дорисуй", "замени лицо"]
     skills: [image-editing-workflow]
+
   - when: ["файлы", "архив", "несколько документов", "анализ проекта", "сверь документы"]
     skills: [file-project-analysis]
-
-combinations:
-  - match: [pharmacy-and-supplements, travel-local-search, official-documents]
-    use_for: "лекарство/товар в другой стране + поиск аптеки + сообщение"
-  - match: [1c-ut-documents, file-project-analysis]
-    use_for: "пакет первичных документов"
-  - match: [grants-and-project-applications, file-project-analysis, official-documents]
-    use_for: "полная конкурсная заявка из файлов"
-  - match: [russian-investment-analysis, file-project-analysis]
-    use_for: "инвестиционный отчет из нескольких источников"
