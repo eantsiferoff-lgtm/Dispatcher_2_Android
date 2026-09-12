@@ -96,8 +96,11 @@ class TestRuntime(unittest.TestCase):
         self.assertEqual(calls[0][0], "russian-investment-analysis")
 
 
-if __name__ == "__main__":
-    unittest.main()
+    def test_auto_refresh_lifecycle_can_be_enabled_or_disabled(self):
+        runtime_on = Runtime(".", auto_refresh_lifecycle=True)
+        runtime_off = Runtime(".", auto_refresh_lifecycle=False)
+        self.assertTrue(runtime_on.auto_refresh_lifecycle)
+        self.assertFalse(runtime_off.auto_refresh_lifecycle)
 
     def test_prepare_preserves_attachments_and_project(self):
         runtime = Runtime(".")

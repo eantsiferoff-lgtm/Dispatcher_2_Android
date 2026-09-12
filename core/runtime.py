@@ -38,7 +38,6 @@ class Runtime:
         self.execution_router = execution_router or ExecutionRouter()
         self._request_texts = {}
         self.execution_trace = execution_trace or ExecutionTrace()
-        self.auto_refresh_lifecycle = auto_refresh_lifecycle
 
         if self.execution_router.select("local") is None:
             self.execution_router.register(
