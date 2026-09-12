@@ -12,6 +12,8 @@ from .execution_trace import ExecutionTrace
 from .models import Request, Plan, Task, Result
 from .planner import Planner
 from .skill_registry import SkillRegistry
+from .skill_lifecycle import SkillLifecycleManager
+from .skill_lifecycle_store import JsonSkillLifecycleStore
 
 
 class Runtime:
@@ -24,7 +26,9 @@ class Runtime:
         execution_trace=None,
     ):
         self.root = Path(root)
-        self.registry = SkillRegistry(self.root)
+        self.lifecycle_store = JsonSkillLifecycleStore(self.root / "state" / "skill_lifecycle.json")
+        self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
+        self.lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
         self.planner = Planner(self.registry)
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router or ExecutionRouter()
@@ -49,6 +53,8 @@ class Runtime:
             self.skill_executor,
             self.execution_router,
             execution_trace=self.execution_trace,
+            lifecycle=self.lifecycle,
+            registry=self.registry,
         )
     def prepare(
         self,

@@ -23,11 +23,17 @@ class SkillRecord:
     def triggers(self) -> list[str]:
         return list(self.metadata.get("triggers", []))
 
+    @property
+    def lifecycle_status(self) -> str:
+        from .skill_lifecycle import SkillLifecycleManager
+        return SkillLifecycleManager().status(self.metadata)
+
 
 class SkillRegistry:
-    def __init__(self, root: str | Path):
+    def __init__(self, root: str | Path, lifecycle_store=None):
         self.root = Path(root)
         self.skills_dir = self.root / "skills"
+        self.lifecycle_store = lifecycle_store
         self._records = {}
 
     def discover(self) -> list[SkillRecord]:
@@ -67,6 +73,11 @@ class SkillRegistry:
         description = str(frontmatter.get("description", "")).strip()
         metadata = frontmatter.get("metadata") or {}
 
+        if self.lifecycle_store is not None:
+            lifecycle_state = self.lifecycle_store.load(skill_id)
+            if lifecycle_state:
+                metadata["lifecycle"] = lifecycle_state
+
         return SkillRecord(
             skill_id=skill_id,
             path=str(skill_file.relative_to(self.root)),
@@ -96,6 +107,19 @@ class SkillRegistry:
 
     def domain(self) -> list[SkillRecord]:
         return [skill for skill in self.all() if skill.metadata.get("role") != "top-level-router"]
+
+    def active_domain(self) -> list[SkillRecord]:
+        return [skill for skill in self.domain() if skill.lifecycle_status == "active"]
+
+    def restore_skill(self, skill_id: str, lifecycle=None) -> SkillRecord | None:
+        skill = self.get(skill_id)
+        if skill is None:
+            return None
+        if lifecycle is None:
+            from .skill_lifecycle import SkillLifecycleManager
+            lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
+        lifecycle.restore(skill.metadata, skill_id=skill_id)
+        return skill
 
     def top_level(self) -> SkillRecord | None:
         for skill in self.all():

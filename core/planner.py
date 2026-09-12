@@ -49,7 +49,7 @@ class Planner:
         text = self._normalize(request)
         candidates: list[PlanCandidate] = []
 
-        for skill in self.registry.domain():
+        for skill in self.registry.active_domain():
             matched_signals: list[str] = []
             score = 0.0
 
@@ -141,7 +141,7 @@ class Planner:
 
         if decision.confidence < self.fallback_threshold and self.fallback is not None:
             fallback_skills = self.fallback(request) or []
-            allowed = {skill.skill_id for skill in self.registry.domain()}
+            allowed = {skill.skill_id for skill in self.registry.active_domain()}
             decision.skills = [skill_id for skill_id in fallback_skills if skill_id in allowed]
 
         return decision

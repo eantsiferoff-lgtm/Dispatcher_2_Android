@@ -5,15 +5,19 @@ from .skill_executor import SkillExecutor
 from .execution_router import ExecutionRouter
 from .security_policy import SecurityPolicy
 from .execution_trace import ExecutionTrace
+from .skill_lifecycle import SkillLifecycleManager
+from .skill_registry import SkillRegistry
 import time
 
 
 class Executor:
-    def __init__(self, skill_executor: SkillExecutor | None = None, execution_router: ExecutionRouter | None = None, security_policy: SecurityPolicy | None = None, execution_trace: ExecutionTrace | None = None):
+    def __init__(self, skill_executor: SkillExecutor | None = None, execution_router: ExecutionRouter | None = None, security_policy: SecurityPolicy | None = None, execution_trace: ExecutionTrace | None = None, lifecycle: SkillLifecycleManager | None = None, registry: SkillRegistry | None = None):
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router
         self.security_policy = security_policy or SecurityPolicy()
         self.execution_trace = execution_trace
+        self.lifecycle = lifecycle or SkillLifecycleManager()
+        self.registry = registry
 
     def execute(self, task: Task) -> Result:
         if task.plan is None:
@@ -77,6 +81,12 @@ class Executor:
                         task.plan.steps[index]["input"] = step_result.get("text", "")
 
                 step["status"] = "completed"
+                skill_id = step.get("skill")
+                if self.registry is not None and skill_id:
+                    skill = self.registry.get(skill_id)
+                    if skill is not None:
+                        self.lifecycle.record_usage(skill.metadata, skill_id=skill_id)
+
                 if self.execution_trace is not None:
                     self.execution_trace.record(request_id=task.request_id, task_id=task.task_id, step=index, skill=step.get("skill", ""), backend=step.get("backend"), status="completed", duration_ms=(time.perf_counter() - step_started) * 1000.0)
 
