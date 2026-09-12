@@ -59,6 +59,10 @@ class SkillLifecycleManager:
             self.store.save(skill_id, lifecycle)
 
     def refresh(self, skill_id: str, metadata: dict[str, Any], *, now: datetime | None = None) -> str:
+        lifecycle = metadata.get("lifecycle") or {}
+        if not lifecycle.get("last_used_at"):
+            return ACTIVE
+
         status = self.status(metadata, now=now)
         lifecycle = metadata.setdefault("lifecycle", {})
         lifecycle["status"] = status
