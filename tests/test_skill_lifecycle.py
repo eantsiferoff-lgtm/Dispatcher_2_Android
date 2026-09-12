@@ -1,9 +1,10 @@
 import unittest
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+
 from core.skill_lifecycle import SkillLifecycleManager
 from core.skill_lifecycle_store import JsonSkillLifecycleStore
-from core.skill_registry import SkillRegistry
+from core.skill_registry import SkillRecord, SkillRegistry
 
 
 class TestSkillLifecycle(unittest.TestCase):
@@ -15,11 +16,19 @@ class TestSkillLifecycle(unittest.TestCase):
         self.assertEqual(self.manager.status({}, now=self.now), "active")
 
     def test_skill_becomes_dormant_after_180_days(self):
-        meta = {"lifecycle": {"last_used_at": (self.now - timedelta(days=200)).isoformat()}}
+        meta = {
+            "lifecycle": {
+                "last_used_at": (self.now - timedelta(days=200)).isoformat()
+            }
+        }
         self.assertEqual(self.manager.status(meta, now=self.now), "dormant")
 
     def test_skill_becomes_archived_after_365_days(self):
-        meta = {"lifecycle": {"last_used_at": (self.now - timedelta(days=400)).isoformat()}}
+        meta = {
+            "lifecycle": {
+                "last_used_at": (self.now - timedelta(days=400)).isoformat()
+            }
+        }
         self.assertEqual(self.manager.status(meta, now=self.now), "archived")
 
     def test_record_usage_updates_metadata(self):
@@ -38,8 +47,17 @@ class TestSkillLifecycle(unittest.TestCase):
 
     def test_registry_excludes_dormant_skill(self):
         registry = SkillRegistry(".")
-        from core.skill_registry import SkillRecord
-        skill = SkillRecord("test-skill", "skills/test/SKILL.md", "Test", "test", {"lifecycle": {"last_used_at": (self.now - timedelta(days=200)).isoformat()}})
+        skill = SkillRecord(
+            "test-skill",
+            "skills/test/SKILL.md",
+            "Test",
+            "test",
+            {
+                "lifecycle": {
+                    "last_used_at": (self.now - timedelta(days=200)).isoformat()
+                }
+            },
+        )
         registry._records = {"test-skill": skill}
         self.assertEqual(registry.active_domain(), [])
 
@@ -53,9 +71,18 @@ class TestSkillLifecycle(unittest.TestCase):
     def test_registry_restores_archived_state_from_store(self):
         path = Path("state/test_lifecycle.json")
         store = JsonSkillLifecycleStore(path)
-        store.save("russian-investment-analysis", {"status": "archived", "last_used_at": "2025-01-01T00:00:00+00:00", "usage_count": 8})
+        store.save(
+            "russian-investment-analysis",
+            {
+                "status": "archived",
+                "last_used_at": "2025-01-01T00:00:00+00:00",
+                "usage_count": 8,
+            },
+        )
         registry = SkillRegistry(".", lifecycle_store=store)
-        self.assertEqual(registry.get("russian-investment-analysis").lifecycle_status, "archived")
+        skill = registry.get("russian-investment-analysis")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.lifecycle_status, "archived")
         path.unlink(missing_ok=True)
 
 

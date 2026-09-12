@@ -58,6 +58,14 @@ class SkillLifecycleManager:
         if self.store is not None and skill_id:
             self.store.save(skill_id, lifecycle)
 
+    def refresh(self, skill_id: str, metadata: dict[str, Any], *, now: datetime | None = None) -> str:
+        status = self.status(metadata, now=now)
+        lifecycle = metadata.setdefault("lifecycle", {})
+        lifecycle["status"] = status
+        if self.store is not None:
+            self.store.save(skill_id, lifecycle)
+        return status
+
     @staticmethod
     def _parse_datetime(value: str | datetime) -> datetime:
         if isinstance(value, datetime):
