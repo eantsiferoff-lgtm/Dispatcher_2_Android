@@ -6,6 +6,28 @@ description: >
   of project facts, consistency checks, or new artifacts that must reuse prior project information.
 metadata:
   version: "1.0"
+  capabilities:
+    - file-analysis
+    - document-analysis
+    - project-analysis
+    - consistency-check
+    - contradiction-detection
+    - fact-extraction
+    - project-continuation
+    - artifact-preparation
+  triggers:
+    - файл
+    - файлы
+    - документ
+    - документы
+    - PDF
+    - Excel
+    - Word
+    - фото
+    - скан
+    - проект
+    - по файлам
+    - из файлов
 ---
 
 # File and Project Analysis

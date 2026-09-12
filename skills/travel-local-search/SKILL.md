@@ -7,6 +7,26 @@ description: >
   or options along a stated walking direction.
 metadata:
   version: "1.0"
+  capabilities:
+    - local-search
+    - pharmacy-search
+    - restaurant-search
+    - shop-search
+    - hotel-search
+    - route-planning
+    - transport-search
+    - opening-hours
+  triggers:
+    - рядом
+    - поблизости
+    - найди
+    - аптека рядом
+    - ресторан
+    - магазин
+    - отель
+    - маршрут
+    - транспорт
+    - Стамбул
 ---
 
 # Travel and Local Search

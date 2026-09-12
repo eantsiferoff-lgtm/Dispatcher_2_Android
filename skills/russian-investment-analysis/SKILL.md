@@ -6,6 +6,24 @@ description: >
   construction/rebalancing, risk scenarios, blogger strategy analysis, and buy/hold/wait decisions.
 metadata:
   version: "1.0"
+  capabilities:
+    - russian-stock-analysis
+    - bond-analysis
+    - dividend-analysis
+    - portfolio-analysis
+    - portfolio-rebalancing
+    - risk-analysis
+  triggers:
+    - акции
+    - облигации
+    - дивиденды
+    - голубые фишки
+    - моex
+    - ммвб
+    - портфель
+    - фондовый рынок
+    - рынок акций
+    - инвестиции
 ---
 
 # Russian Investment Analysis

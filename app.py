@@ -1,14 +1,14 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from core.router import Dispatcher
+from core.runtime import Runtime
 from core.composio_gateway import ComposioGateway
 
 load_dotenv()
 ROOT = Path(__file__).resolve().parent
 
 def main():
-    dispatcher = Dispatcher(ROOT)
+    runtime = Runtime(ROOT)
     print('Dispatcher 2.0 — working runtime')
     print("Commands: 'plan <text>', 'connect gmail', 'mcp', 'exit'")
     while True:
@@ -24,6 +24,7 @@ def main():
             print(ComposioGateway().authorize(toolkit)['redirect_url'])
             continue
         request = raw[5:].strip() if raw.lower().startswith('plan ') else raw
-        print(dispatcher.build_context(request)['plan'])
+        _, plan, task = runtime.prepare(request)
+        print({"request": request, "skills": plan.skills, "steps": plan.steps, "task_id": task.task_id})
 
 if __name__ == '__main__': main()

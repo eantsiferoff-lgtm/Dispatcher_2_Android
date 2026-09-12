@@ -7,6 +7,27 @@ description: >
   vitamin, supplement, analogue, availability and price requests.
 metadata:
   version: "1.0"
+  capabilities:
+    - medicine-information
+    - otc-products
+    - vitamin-analysis
+    - supplement-analysis
+    - pharmacy-search
+    - price-comparison
+    - availability-check
+  triggers:
+    - лекарство
+    - лекарства
+    - препарат
+    - препараты
+    - медикамент
+    - медикаменты
+    - витамины
+    - БАД
+    - добавки
+    - аптека
+    - препарат
+    - цена препарата
 ---
 
 # Pharmacy and Supplements

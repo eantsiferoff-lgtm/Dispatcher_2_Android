@@ -1,0 +1,308 @@
+import unittest
+
+from core.executor import Executor
+from core.models import Plan, Task
+from core.skill_executor import SkillExecutor
+from core.security_policy import SecurityPolicy
+
+
+class TestExecutor(unittest.TestCase):
+    def test_executes_registered_skill_handlers(self):
+        skill_executor = SkillExecutor()
+        calls = []
+
+        def handler(step, task_id):
+            calls.append((step["skill"], task_id))
+            return {"text": f"executed:{step['skill']}"}
+
+        skill_executor.register(
+            "russian-investment-analysis",
+            handler,
+        )
+
+        plan = Plan(
+            request_id="req_001",
+            skills=["russian-investment-analysis"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "russian-investment-analysis",
+                    "status": "pending",
+                }
+            ],
+        )
+
+        task = Task(
+            task_id="task_001",
+            request_id="req_001",
+            plan=plan,
+        )
+
+        result = Executor(skill_executor).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+        self.assertEqual(task.current_step, 1)
+        self.assertEqual(
+            calls,
+            [("russian-investment-analysis", "task_001")],
+        )
+        self.assertEqual(
+            plan.steps[0]["status"],
+            "completed",
+        )
+
+
+    def test_uses_execution_router_backend(self):
+        from core.execution_router import ExecutionRouter
+
+        class Backend:
+            def execute(self, step, task_id):
+                return {"status": "completed", "task_id": task_id}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+
+        plan = Plan(
+            request_id="req_002",
+            skills=["test-skill"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "test-skill",
+                    "backend": "test",
+                    "status": "pending",
+                }
+            ],
+        )
+
+        task = Task(
+            task_id="task_002",
+            request_id="req_002",
+            plan=plan,
+        )
+
+        result = Executor(execution_router=router).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.task_id, "task_002")
+        self.assertEqual(task.status, "completed")
+
+    def test_records_selected_backend(self):
+        from core.execution_router import ExecutionRouter
+        class Backend:
+            priority = 100
+            def available(self):
+                return True
+            def can_execute(self, step):
+                return step.get("skill") == "test-skill"
+            def execute(self, step, task_id):
+                return {"status": "completed", "task_id": task_id, "text": "ok"}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_006", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "status": "pending"}])
+        task = Task(task_id="task_006", request_id="req_006", plan=plan)
+        result = Executor(execution_router=router).execute(task)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(plan.steps[0].get("backend"), "test")
+
+    def test_passes_previous_step_result_to_next_step(self):
+        from core.execution_router import ExecutionRouter
+        calls = []
+        class Backend:
+            priority = 100
+            def available(self):
+                return True
+            def can_execute(self, step):
+                return step.get("skill") in {"skill-a", "skill-b"}
+            def execute(self, step, task_id):
+                calls.append(dict(step))
+                if step["skill"] == "skill-a":
+                    return {"status": "completed", "task_id": task_id, "text": "DATA_A"}
+                return {"status": "completed", "task_id": task_id, "text": step.get("input", "") + "_PROCESSED"}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_007", skills=["skill-a", "skill-b"], steps=[
+            {"step": 1, "skill": "skill-a", "backend": "test", "status": "pending"},
+            {"step": 2, "skill": "skill-b", "backend": "test", "status": "pending"},
+        ])
+        task = Task(task_id="task_007", request_id="req_007", plan=plan)
+        result = Executor(execution_router=router).execute(task)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(calls[0]["skill"], "skill-a")
+        self.assertEqual(calls[1].get("input"), "DATA_A")
+        self.assertEqual(result.text, "DATA_A_PROCESSED")
+
+    def test_preserves_backend_result_text(self):
+        from core.execution_router import ExecutionRouter
+        class Backend:
+            def execute(self, step, task_id):
+                return {"status": "completed", "task_id": task_id, "text": "AI_RESULT"}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_005", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "backend": "test", "status": "pending"}])
+        task = Task(task_id="task_005", request_id="req_005", plan=plan)
+        result = Executor(execution_router=router).execute(task)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.text, "AI_RESULT")
+
+    def test_security_policy_allows_safe_action(self):
+        from core.execution_router import ExecutionRouter
+        from core.security_policy import SecurityPolicy
+        calls = []
+        class Backend:
+            def execute(self, step, task_id):
+                calls.append(step["action"])
+                return {"status": "completed", "task_id": task_id, "text": "analyzed"}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_010", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "action": "analyze", "backend": "test", "status": "pending"}])
+        task = Task(task_id="task_010", request_id="req_010", plan=plan)
+        result = Executor(execution_router=router, security_policy=SecurityPolicy()).execute(task)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+        self.assertEqual(calls, ["analyze"])
+        self.assertEqual(result.text, "analyzed")
+
+    def test_records_failed_execution_trace(self):
+        from core.execution_router import ExecutionRouter
+        from core.execution_trace import ExecutionTrace
+        trace = ExecutionTrace()
+        class Backend:
+            def execute(self, step, task_id):
+                raise RuntimeError("backend boom")
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_012", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "action": "analyze", "backend": "test", "status": "pending"}])
+        task = Task(task_id="task_012", request_id="req_012", plan=plan)
+        result = Executor(execution_router=router, security_policy=SecurityPolicy(), execution_trace=trace).execute(task)
+        self.assertEqual(result.status, "failed")
+        events = trace.events()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["status"], "failed")
+        self.assertEqual(events[0]["error"], "backend boom")
+
+    def test_records_execution_trace(self):
+        from core.execution_router import ExecutionRouter
+        from core.execution_trace import ExecutionTrace
+        trace = ExecutionTrace()
+        class Backend:
+            def execute(self, step, task_id):
+                return {"status": "completed", "task_id": task_id, "text": "ok"}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_011", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "action": "analyze", "backend": "test", "status": "pending"}])
+        task = Task(task_id="task_011", request_id="req_011", plan=plan)
+        result = Executor(execution_router=router, security_policy=SecurityPolicy(), execution_trace=trace).execute(task)
+        self.assertEqual(result.status, "completed")
+        events = trace.events()
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0]["request_id"], "req_011")
+        self.assertEqual(events[0]["task_id"], "task_011")
+        self.assertEqual(events[0]["skill"], "test-skill")
+        self.assertEqual(events[0]["backend"], "test")
+        self.assertEqual(events[0]["status"], "completed")
+
+    def test_security_policy_denies_unknown_action(self):
+        from core.execution_router import ExecutionRouter
+        from core.security_policy import SecurityPolicy
+        calls = []
+        class Backend:
+            def execute(self, step, task_id):
+                calls.append(step)
+                return {"status": "completed", "task_id": task_id, "text": "executed"}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_009", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "action": "unknown-dangerous-action", "backend": "test", "status": "pending"}])
+        task = Task(task_id="task_009", request_id="req_009", plan=plan)
+        result = Executor(execution_router=router, security_policy=SecurityPolicy()).execute(task)
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(task.status, "failed")
+        self.assertEqual(calls, [])
+        self.assertTrue(any("DENY" in warning for warning in result.warnings))
+
+    def test_security_policy_blocks_consequential_action(self):
+        from core.execution_router import ExecutionRouter
+        from core.security_policy import SecurityPolicy
+        calls = []
+        class Backend:
+            def execute(self, step, task_id):
+                calls.append(step)
+                return {"status": "completed", "task_id": task_id, "text": "sent"}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(request_id="req_008", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "action": "send", "backend": "test", "status": "pending"}])
+        task = Task(task_id="task_008", request_id="req_008", plan=plan)
+        result = Executor(execution_router=router, security_policy=SecurityPolicy()).execute(task)
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(task.status, "failed")
+        self.assertEqual(calls, [])
+        self.assertTrue(any("CONFIRM" in warning for warning in result.warnings))
+
+    def test_missing_execution_backend_fails_task(self):
+        from core.execution_router import ExecutionRouter
+
+        plan = Plan(
+            request_id="req_003",
+            skills=["test-skill"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "test-skill",
+                    "backend": "missing",
+                    "status": "pending",
+                }
+            ],
+        )
+
+        task = Task(
+            task_id="task_003",
+            request_id="req_003",
+            plan=plan,
+        )
+
+        result = Executor(execution_router=ExecutionRouter()).execute(task)
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(task.status, "failed")
+
+
+    def test_automatically_routes_when_backend_not_specified(self):
+        from core.execution_router import ExecutionRouter
+
+        class Backend:
+            priority = 100
+            def available(self):
+                return True
+            def execute(self, step, task_id):
+                return {"status": "completed", "task_id": task_id}
+
+        router = ExecutionRouter()
+        router.register("auto", Backend())
+
+        plan = Plan(
+            request_id="req_004",
+            skills=["test-skill"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "test-skill",
+                    "status": "pending",
+                }
+            ],
+        )
+
+        task = Task(
+            task_id="task_004",
+            request_id="req_004",
+            plan=plan,
+        )
+
+        result = Executor(execution_router=router).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+
+
+if __name__ == "__main__":
+    unittest.main()
