@@ -68,6 +68,26 @@ class TestSkillLifecycle(unittest.TestCase):
         self.assertEqual(store.load("test-skill")["usage_count"], 2)
         path.unlink(missing_ok=True)
 
+    def test_runtime_automatically_refreshes_lifecycle(self):
+        from core.runtime import Runtime
+        import shutil
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            skill_src = Path("skills/russian-investment-analysis")
+            skill_dst = root / "skills" / "russian-investment-analysis"
+            skill_dst.parent.mkdir(parents=True)
+            shutil.copytree(skill_src, skill_dst)
+            path = root / "state" / "skill_lifecycle.json"
+            store = JsonSkillLifecycleStore(path)
+            old_date = (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()
+            store.save("russian-investment-analysis", {"status": "active", "last_used_at": old_date, "usage_count": 3})
+            runtime = Runtime(root, auto_refresh_lifecycle=True)
+        skill = runtime.registry.get("russian-investment-analysis")
+        self.assertIsNotNone(skill)
+        self.assertEqual(skill.lifecycle_status, "dormant")
+        path.unlink(missing_ok=True)
+
     def test_registry_restores_archived_state_from_store(self):
         path = Path("state/test_lifecycle.json")
         store = JsonSkillLifecycleStore(path)

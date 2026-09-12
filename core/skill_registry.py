@@ -14,6 +14,7 @@ class SkillRecord:
     name: str
     description: str
     metadata: dict[str, Any] = field(default_factory=dict)
+    lifecycle_store: Any = None
 
     @property
     def capabilities(self) -> list[str]:
@@ -26,7 +27,8 @@ class SkillRecord:
     @property
     def lifecycle_status(self) -> str:
         from .skill_lifecycle import SkillLifecycleManager
-        return SkillLifecycleManager().status(self.metadata)
+        manager = SkillLifecycleManager(store=self.lifecycle_store)
+        return manager.status(self.metadata)
 
 
 class SkillRegistry:
@@ -84,6 +86,7 @@ class SkillRegistry:
             name=name,
             description=description,
             metadata=metadata,
+            lifecycle_store=self.lifecycle_store,
         )
 
     def _validate(self, records: list[SkillRecord]) -> None:
