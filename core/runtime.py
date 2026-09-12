@@ -24,16 +24,21 @@ class Runtime:
         execution_router: ExecutionRouter | None = None,
         openai_runner=None,
         execution_trace=None,
+        auto_refresh_lifecycle: bool = True,
     ):
         self.root = Path(root)
         self.lifecycle_store = JsonSkillLifecycleStore(self.root / "state" / "skill_lifecycle.json")
         self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
         self.lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
+        self.auto_refresh_lifecycle = auto_refresh_lifecycle
+        if self.auto_refresh_lifecycle:
+            self.registry.refresh_lifecycle(self.lifecycle)
         self.planner = Planner(self.registry)
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router or ExecutionRouter()
         self._request_texts = {}
         self.execution_trace = execution_trace or ExecutionTrace()
+        self.auto_refresh_lifecycle = auto_refresh_lifecycle
 
         if self.execution_router.select("local") is None:
             self.execution_router.register(
