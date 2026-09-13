@@ -36,6 +36,23 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIsNotNone(top)
         self.assertEqual(top.skill_id, "workflow-dispatcher")
 
+    def test_is_eligible_requires_active_domain_skill(self):
+        registry = SkillRegistry("tests/fixtures")
+
+        active = registry.get("test-skill")
+        self.assertIsNotNone(active)
+        self.assertTrue(registry.is_eligible(active))
+
+        from datetime import datetime, timedelta, timezone
+
+        active.metadata["lifecycle"] = {
+            "status": "dormant",
+            "last_used_at": (
+                datetime.now(timezone.utc) - timedelta(days=200)
+            ).isoformat(),
+        }
+        self.assertFalse(registry.is_eligible(active))
+
     def test_discovers_new_skill_automatically(self):
         registry = SkillRegistry("tests/fixtures")
         skill = registry.get("test-skill")

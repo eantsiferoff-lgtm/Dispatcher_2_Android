@@ -114,6 +114,12 @@ class SkillRegistry:
     def active_domain(self) -> list[SkillRecord]:
         return [skill for skill in self.domain() if skill.lifecycle_status == "active"]
 
+    def is_eligible(self, skill: SkillRecord) -> bool:
+        return (
+            skill.metadata.get("role") != "top-level-router"
+            and skill.lifecycle_status == "active"
+        )
+
     def refresh_lifecycle(self, lifecycle=None) -> dict[str, str]:
         if lifecycle is None:
             from .skill_lifecycle import SkillLifecycleManager
