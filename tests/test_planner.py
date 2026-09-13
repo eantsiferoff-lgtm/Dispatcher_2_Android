@@ -41,6 +41,22 @@ class TestPlanner(unittest.TestCase):
         decision = planner.plan("задача без локального совпадения")
         self.assertEqual(decision.skills, ["russian-investment-analysis"])
 
+    def test_fallback_rejects_dormant_skills(self):
+        from datetime import datetime, timedelta, timezone
+        from core.skill_registry import SkillRecord
+        registry = SkillRegistry(".")
+        skill = SkillRecord(
+            "test-skill",
+            "skills/test/SKILL.md",
+            "Test",
+            "test",
+            {"lifecycle": {"status": "dormant", "last_used_at": (datetime.now(timezone.utc) - timedelta(days=200)).isoformat()}},
+        )
+        registry._records = {"test-skill": skill}
+        planner = Planner(registry, fallback=lambda request: ["test-skill"])
+        decision = planner.plan("полностью неизвестная задача")
+        self.assertEqual(decision.skills, [])
+
     def test_fallback_rejects_unknown_skills(self):
         from core.skill_registry import SkillRegistry
         planner = Planner(SkillRegistry("."), fallback=lambda request: ["russian-investment-analysis", "fake-skill"])
