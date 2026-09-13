@@ -68,6 +68,71 @@ class TestSkillLifecycle(unittest.TestCase):
         self.assertEqual(store.load("test-skill")["usage_count"], 2)
         path.unlink(missing_ok=True)
 
+    def test_planner_uses_skill_after_restore(self):
+        from core.planner import Planner
+        registry = SkillRegistry(".")
+        skill = SkillRecord(
+            "test-skill",
+            "skills/test/SKILL.md",
+            "Test",
+            "test",
+            {"triggers": ["уникальный тестовый запрос"], "lifecycle": {"status": "dormant", "last_used_at": (self.now - timedelta(days=200)).isoformat()}},
+        )
+        registry._records = {"test-skill": skill}
+        self.assertEqual(Planner(registry).plan("уникальный тестовый запрос").skills, [])
+        registry.restore_skill("test-skill")
+        decision = Planner(registry).plan("уникальный тестовый запрос")
+        self.assertIn("test-skill", decision.skills)
+
+    def test_planner_excludes_dormant_skill(self):
+        from core.planner import Planner
+        registry = SkillRegistry(".")
+        skill = SkillRecord(
+            "test-skill",
+            "skills/test/SKILL.md",
+            "Test",
+            "test",
+            {"triggers": ["уникальный тестовый запрос"], "lifecycle": {"status": "dormant", "last_used_at": (self.now - timedelta(days=200)).isoformat()}},
+        )
+        registry._records = {"test-skill": skill}
+        decision = Planner(registry).plan("уникальный тестовый запрос")
+        self.assertNotIn("test-skill", decision.skills)
+        self.assertEqual(decision.candidates, [])
+
+    def test_full_lifecycle_active_dormant_archived_restore(self):
+        registry = SkillRegistry(".")
+        archived_at = (self.now - timedelta(days=400)).isoformat()
+        skill = SkillRecord(
+            "test-skill",
+            "skills/test/SKILL.md",
+            "Test",
+            "test",
+            {"lifecycle": {"status": "active", "last_used_at": archived_at}},
+        )
+        registry._records = {"test-skill": skill}
+        self.assertEqual(skill.lifecycle_status, "archived")
+        self.assertEqual(registry.active_domain(), [])
+        restored = registry.restore_skill("test-skill")
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.lifecycle_status, "active")
+        self.assertEqual([item.skill_id for item in registry.active_domain()], ["test-skill"])
+
+    def test_restore_returns_skill_to_active_domain(self):
+        registry = SkillRegistry(".")
+        skill = SkillRecord(
+            "test-skill",
+            "skills/test/SKILL.md",
+            "Test",
+            "test",
+            {"lifecycle": {"status": "dormant", "last_used_at": (self.now - timedelta(days=200)).isoformat()}},
+        )
+        registry._records = {"test-skill": skill}
+        self.assertEqual(registry.active_domain(), [])
+        restored = registry.restore_skill("test-skill")
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.lifecycle_status, "active")
+        self.assertEqual([item.skill_id for item in registry.active_domain()], ["test-skill"])
+
     def test_runtime_automatically_refreshes_lifecycle(self):
         from core.runtime import Runtime
         import shutil
