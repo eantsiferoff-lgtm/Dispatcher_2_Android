@@ -24,6 +24,7 @@ class CapabilityIndex:
                 text=self._build_text(skill),
             )
             for skill in self.registry.domain()
+            if self.registry.is_eligible(skill)
         ]
         return list(self._items)
 
