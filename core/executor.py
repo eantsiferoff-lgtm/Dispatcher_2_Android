@@ -19,6 +19,84 @@ class Executor:
         self.lifecycle = lifecycle or SkillLifecycleManager()
         self.registry = registry
 
+    def _execute_step(self, step: dict, task: Task):
+        step["status"] = "running"
+        step_started = time.perf_counter()
+
+        action = step.get("action")
+        if action:
+            policy_result = self.security_policy.check(action)
+            if policy_result != "SAFE":
+                raise RuntimeError(
+                    f"Security policy: {policy_result} for action: {action}"
+                )
+
+        backend_name = step.get("backend")
+
+        if not backend_name and self.execution_router is not None:
+            backend_name = self.execution_router.route(step)
+            if backend_name:
+                step["backend"] = backend_name
+
+        if backend_name:
+            if self.execution_router is None:
+                raise RuntimeError(
+                    "ExecutionRouter is required for backend execution"
+                )
+            step_result = self.execution_router.execute(
+                backend_name,
+                step,
+                task.task_id,
+            )
+        else:
+            step_result = self.skill_executor.execute(
+                step,
+                task.task_id,
+            )
+
+        if isinstance(step_result, dict):
+            step["result"] = step_result
+
+        step["status"] = "completed"
+
+        skill_id = step.get("skill")
+        if self.registry is not None and skill_id:
+            skill = self.registry.get(skill_id)
+            if skill is not None:
+                self.lifecycle.record_usage(
+                    skill.metadata,
+                    skill_id=skill_id,
+                )
+
+        if self.execution_trace is not None:
+            self.execution_trace.record(
+                request_id=task.request_id,
+                task_id=task.task_id,
+                step=step.get("step", 0),
+                skill=step.get("skill", ""),
+                backend=step.get("backend"),
+                status="completed",
+                duration_ms=(time.perf_counter() - step_started) * 1000.0,
+            )
+
+        return step_result, step_started
+
+    def _execute_parallel_steps(self, steps: list[dict], task: Task):
+        from concurrent.futures import ThreadPoolExecutor
+
+        results = [None] * len(steps)
+
+        with ThreadPoolExecutor(max_workers=len(steps)) as pool:
+            futures = [
+                pool.submit(self._execute_step, step, task)
+                for step in steps
+            ]
+
+            for index, future in enumerate(futures):
+                results[index] = future.result()
+
+        return results
+
     def execute(self, task: Task) -> Result:
         if task.plan is None:
             task.status = "failed"
@@ -38,57 +116,47 @@ class Executor:
         result_warnings = []
 
         try:
-            for index, step in enumerate(task.plan.steps, start=1):
-                step["status"] = "running"
-                task.current_step = index
-                step_started = time.perf_counter()
+            index = 0
+            while index < len(task.plan.steps):
+                step = task.plan.steps[index]
+                task.current_step = index + 1
 
-                action = step.get("action")
-                if action:
-                    policy_result = self.security_policy.check(action)
-                    if policy_result != "SAFE":
-                        raise RuntimeError(f"Security policy: {policy_result} for action: {action}")
+                if step.get("execution_mode") == "parallel":
+                    group = []
+                    group_start = index
+                    while (
+                        index < len(task.plan.steps)
+                        and task.plan.steps[index].get("execution_mode") == "parallel"
+                    ):
+                        group.append(task.plan.steps[index])
+                        index += 1
 
-                backend_name = step.get("backend")
+                    parallel_results = self._execute_parallel_steps(group, task)
 
-                if not backend_name and self.execution_router is not None:
-                    backend_name = self.execution_router.route(step)
-                    if backend_name:
-                        step["backend"] = backend_name
+                    for group_offset, (step_result, _step_started) in enumerate(parallel_results):
+                        step_index = group_start + group_offset + 1
+                        if isinstance(step_result, dict):
+                            if step_result.get("text") is not None:
+                                result_text = str(step_result["text"])
+                            result_artifacts.extend(step_result.get("artifacts", []))
+                            result_sources.extend(step_result.get("sources", []))
+                            result_warnings.extend(step_result.get("warnings", []))
 
-                if backend_name:
-                    if self.execution_router is None:
-                        raise RuntimeError("ExecutionRouter is required for backend execution")
-                    step_result = self.execution_router.execute(
-                        backend_name,
-                        step,
-                        task.task_id,
-                    )
+                            if step_index < len(task.plan.steps):
+                                task.plan.steps[step_index]["input"] = step_result.get("text", "")
                 else:
-                    step_result = self.skill_executor.execute(
-                        step,
-                        task.task_id,
-                    )
+                    step_result, _step_started = self._execute_step(step, task)
+                    index += 1
 
-                if isinstance(step_result, dict):
-                    if step_result.get("text") is not None:
-                        result_text = str(step_result["text"])
-                    result_artifacts.extend(step_result.get("artifacts", []))
-                    result_sources.extend(step_result.get("sources", []))
-                    result_warnings.extend(step_result.get("warnings", []))
-                    step["result"] = step_result
-                    if index < len(task.plan.steps):
-                        task.plan.steps[index]["input"] = step_result.get("text", "")
+                    if isinstance(step_result, dict):
+                        if step_result.get("text") is not None:
+                            result_text = str(step_result["text"])
+                        result_artifacts.extend(step_result.get("artifacts", []))
+                        result_sources.extend(step_result.get("sources", []))
+                        result_warnings.extend(step_result.get("warnings", []))
 
-                step["status"] = "completed"
-                skill_id = step.get("skill")
-                if self.registry is not None and skill_id:
-                    skill = self.registry.get(skill_id)
-                    if skill is not None:
-                        self.lifecycle.record_usage(skill.metadata, skill_id=skill_id)
-
-                if self.execution_trace is not None:
-                    self.execution_trace.record(request_id=task.request_id, task_id=task.task_id, step=index, skill=step.get("skill", ""), backend=step.get("backend"), status="completed", duration_ms=(time.perf_counter() - step_started) * 1000.0)
+                        if index < len(task.plan.steps):
+                            task.plan.steps[index]["input"] = step_result.get("text", "")
 
             task.status = "completed"
 

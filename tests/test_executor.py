@@ -53,6 +53,239 @@ class TestExecutor(unittest.TestCase):
         )
 
 
+    def test_parallel_helper_executes_all_steps(self):
+        from core.execution_router import ExecutionRouter
+        from threading import Event
+
+        started_a = Event()
+        started_b = Event()
+        release = Event()
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") in {"skill-a", "skill-b"}
+
+            def execute(self, step, task_id):
+                skill = step["skill"]
+                calls.append(skill)
+                if skill == "skill-a":
+                    started_a.set()
+                else:
+                    started_b.set()
+
+                if not release.wait(timeout=2):
+                    raise RuntimeError("parallel helper timeout")
+
+                return {"status": "completed", "task_id": task_id}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        executor = Executor(execution_router=router)
+
+        task = Task(
+            task_id="task_parallel_helper",
+            request_id="req_parallel_helper",
+        )
+
+        steps = [
+            {
+                "step": 1,
+                "skill": "skill-a",
+                "status": "pending",
+                "depends_on": [],
+                "execution_mode": "parallel",
+                "backend": "test",
+            },
+            {
+                "step": 2,
+                "skill": "skill-b",
+                "status": "pending",
+                "depends_on": [],
+                "execution_mode": "parallel",
+                "backend": "test",
+            },
+        ]
+
+        import threading
+        results_holder = []
+
+        worker = threading.Thread(
+            target=lambda: results_holder.extend(
+                executor._execute_parallel_steps(steps, task)
+            )
+        )
+        worker.start()
+
+        try:
+            self.assertTrue(started_a.wait(timeout=2))
+            self.assertTrue(started_b.wait(timeout=2))
+        finally:
+            release.set()
+
+        worker.join(timeout=3)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(results_holder), 2)
+        self.assertEqual(
+            [result[0]["status"] for result in results_holder],
+            ["completed", "completed"],
+        )
+
+
+    def test_parallel_group_then_ordered_step(self):
+        from core.execution_router import ExecutionRouter
+
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") in {"skill-a", "skill-b", "skill-c"}
+
+            def execute(self, step, task_id):
+                calls.append(step["skill"])
+                return {
+                    "status": "completed",
+                    "task_id": task_id,
+                    "text": step["skill"],
+                }
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        executor = Executor(execution_router=router)
+
+        task = Task(
+            task_id="task_mixed_execution",
+            request_id="req_mixed_execution",
+        )
+        task.plan = type("Plan", (), {})()
+        task.plan.steps = [
+            {
+                "step": 1,
+                "skill": "skill-a",
+                "status": "pending",
+                "depends_on": [],
+                "execution_mode": "parallel",
+                "backend": "test",
+            },
+            {
+                "step": 2,
+                "skill": "skill-b",
+                "status": "pending",
+                "depends_on": [],
+                "execution_mode": "parallel",
+                "backend": "test",
+            },
+            {
+                "step": 3,
+                "skill": "skill-c",
+                "status": "pending",
+                "depends_on": [1, 2],
+                "execution_mode": "ordered",
+                "backend": "test",
+            },
+        ]
+
+        result = executor.execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(calls, ["skill-a", "skill-b", "skill-c"])
+        self.assertEqual(task.plan.steps[0]["status"], "completed")
+        self.assertEqual(task.plan.steps[1]["status"], "completed")
+        self.assertEqual(task.plan.steps[2]["status"], "completed")
+
+    def test_executes_independent_steps_in_parallel(self):
+        from core.execution_router import ExecutionRouter
+        from threading import Event
+
+        started_a = Event()
+        started_b = Event()
+        release = Event()
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") in {"skill-a", "skill-b"}
+
+            def execute(self, step, task_id):
+                skill = step["skill"]
+                calls.append(skill)
+                if skill == "skill-a":
+                    started_a.set()
+                else:
+                    started_b.set()
+
+                if not release.wait(timeout=2):
+                    raise RuntimeError("parallel execution timeout")
+
+                return {"status": "completed", "task_id": task_id, "text": skill}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+
+        plan = Plan(
+            request_id="req_parallel",
+            skills=["skill-a", "skill-b"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "skill-a",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                },
+                {
+                    "step": 2,
+                    "skill": "skill-b",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                },
+            ],
+        )
+
+        task = Task(
+            task_id="task_parallel",
+            request_id="req_parallel",
+            plan=plan,
+        )
+
+        import threading
+        worker = threading.Thread(
+            target=lambda: Executor(execution_router=router).execute(task)
+        )
+        worker.start()
+
+        try:
+            self.assertTrue(started_a.wait(timeout=2))
+            self.assertTrue(started_b.wait(timeout=2))
+        finally:
+            release.set()
+
+        worker.join(timeout=3)
+
+        self.assertFalse(worker.is_alive())
+        self.assertCountEqual(calls, ["skill-a", "skill-b"])
+        self.assertEqual(task.status, "completed")
+
+
     def test_uses_execution_router_backend(self):
         from core.execution_router import ExecutionRouter
 
