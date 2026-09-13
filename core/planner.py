@@ -49,7 +49,9 @@ class Planner:
         text = self._normalize(request)
         candidates: list[PlanCandidate] = []
 
-        for skill in self.registry.active_domain():
+        for skill in self.registry.domain():
+            if not self.registry.is_eligible(skill):
+                continue
             matched_signals: list[str] = []
             score = 0.0
 
