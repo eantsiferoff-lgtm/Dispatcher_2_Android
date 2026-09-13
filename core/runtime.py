@@ -11,6 +11,7 @@ from .openai_backend import OpenAIBackend
 from .execution_trace import ExecutionTrace
 from .models import Request, Plan, Task, Result
 from .planner import Planner
+from .plan_builder import PlanBuilder
 from .skill_registry import SkillRegistry
 from .skill_lifecycle import SkillLifecycleManager
 from .skill_lifecycle_store import JsonSkillLifecycleStore
@@ -34,6 +35,7 @@ class Runtime:
         if self.auto_refresh_lifecycle:
             self.registry.refresh_lifecycle(self.lifecycle)
         self.planner = Planner(self.registry)
+        self.plan_builder = PlanBuilder()
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router or ExecutionRouter()
         self._request_texts = {}
@@ -74,7 +76,7 @@ class Runtime:
         )
 
         decision = self.planner.plan(request.text)
-        plan = self._build_plan(request.request_id, decision)
+        plan = self.plan_builder.build(request.request_id, decision)
 
         task_id = self._task_id()
         self._request_texts[task_id] = request.text
@@ -103,23 +105,6 @@ class Runtime:
 
         result = self.executor.execute(task)
         return request, plan, task, result
-
-    @staticmethod
-    def _build_plan(request_id, decision):
-        steps = [
-            {
-                "step": index,
-                "skill": skill_id,
-                "status": "pending",
-            }
-            for index, skill_id in enumerate(decision.skills, start=1)
-        ]
-
-        return Plan(
-            request_id=request_id,
-            skills=decision.skills,
-            steps=steps,
-        )
 
     @staticmethod
     def _request_id() -> str:

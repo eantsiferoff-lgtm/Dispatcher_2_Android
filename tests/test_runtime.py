@@ -13,6 +13,27 @@ class TestRuntime(unittest.TestCase):
         self.assertIsInstance(backend, OpenAIBackend)
         self.assertEqual(backend.priority, 10)
 
+    def test_multi_skill_plan_preserves_skill_order_and_dependencies(self):
+        runtime = Runtime(".")
+        request, plan, task = runtime.prepare(
+            "Проанализируй российский фондовый рынок по файлам проекта"
+        )
+
+        self.assertIn("russian-investment-analysis", plan.skills)
+        self.assertIn("file-project-analysis", plan.skills)
+        self.assertEqual(len(plan.steps), 2)
+
+        self.assertEqual(plan.steps[0]["step"], 1)
+        self.assertEqual(plan.steps[1]["step"], 2)
+        self.assertEqual(plan.steps[0]["status"], "pending")
+        self.assertEqual(plan.steps[1]["status"], "pending")
+
+        self.assertIn("depends_on", plan.steps[0])
+        self.assertIn("depends_on", plan.steps[1])
+        self.assertIn("execution_mode", plan.steps[0])
+        self.assertIn("execution_mode", plan.steps[1])
+
+
     def test_prepare_creates_request_plan_and_task(self):
         runtime = Runtime(".")
         request, plan, task = runtime.prepare("Проанализируй российский фондовый рынок")
