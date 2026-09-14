@@ -16,7 +16,7 @@ class TestBackendFallback(unittest.TestCase):
         router.register('local', local)
         router.register('openai', openai)
         self.assertEqual(router.route({'skill': 'local-skill'}), 'local')
-        self.assertEqual(router.route({'skill': 'ai-skill'}), 'openai')
+        self.assertEqual(router.route({'skill': 'ai-skill', 'execution_mode': 'ai'}), 'openai')
 
 
 if __name__ == '__main__':

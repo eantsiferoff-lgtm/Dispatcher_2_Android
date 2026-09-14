@@ -27,7 +27,7 @@ class TestRuntime(unittest.TestCase):
         runtime = Runtime(".", openai_runner=lambda text: "ok")
         backend = runtime.execution_router.select("openai")
         self.assertIsInstance(backend, OpenAIBackend)
-        self.assertEqual(backend.priority, 10)
+        self.assertEqual(backend.priority, 80)
 
     def test_multi_skill_plan_preserves_skill_order_and_dependencies(self):
         runtime = Runtime(".")
