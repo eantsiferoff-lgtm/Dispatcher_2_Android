@@ -204,6 +204,160 @@ class TestExecutor(unittest.TestCase):
         self.assertEqual(task.plan.steps[1]["status"], "completed")
         self.assertEqual(task.plan.steps[2]["status"], "completed")
 
+    def test_parallel_group_uses_scheduler_ready_steps(self):
+        from core.execution_router import ExecutionRouter
+
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") in {"skill-a", "skill-b", "skill-c"}
+
+            def execute(self, step, task_id):
+                calls.append(step["skill"])
+                return {
+                    "status": "completed",
+                    "task_id": task_id,
+                    "text": step["skill"],
+                }
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        executor = Executor(max_parallel_skills=2, execution_router=router)
+
+        plan = Plan(
+            request_id="req_scheduler_capacity",
+            skills=["skill-a", "skill-b", "skill-c"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "skill-a",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                },
+                {
+                    "step": 2,
+                    "skill": "skill-b",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                },
+                {
+                    "step": 3,
+                    "skill": "skill-c",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                },
+            ],
+        )
+
+        task = Task(
+            task_id="task_scheduler_capacity",
+            request_id="req_scheduler_capacity",
+            plan=plan,
+        )
+
+        result = executor.execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(
+            [step["status"] for step in task.plan.steps],
+            ["completed", "completed", "completed"],
+        )
+        self.assertCountEqual(calls, ["skill-a", "skill-b", "skill-c"])
+
+    def test_executes_steps_by_dag_readiness(self):
+        from core.execution_router import ExecutionRouter
+
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") in {"skill-a", "skill-b", "skill-c"}
+
+            def execute(self, step, task_id):
+                calls.append(step["skill"])
+                return {
+                    "status": "completed",
+                    "task_id": task_id,
+                    "text": step["skill"],
+                }
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        executor = Executor(max_parallel_skills=2, execution_router=router)
+
+        plan = Plan(
+            request_id="req_dag",
+            skills=["skill-a", "skill-b", "skill-c"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "skill-a",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                },
+                {
+                    "step": 2,
+                    "skill": "skill-b",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                },
+                {
+                    "step": 3,
+                    "skill": "skill-c",
+                    "status": "pending",
+                    "depends_on": [1, 2],
+                    "execution_mode": "ordered",
+                    "backend": "test",
+                },
+            ],
+        )
+
+        task = Task(
+            task_id="task_dag",
+            request_id="req_dag",
+            plan=plan,
+        )
+
+        result = executor.execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(calls, ["skill-a", "skill-b", "skill-c"])
+        self.assertEqual(
+            [step["status"] for step in task.plan.steps],
+            ["completed", "completed", "completed"],
+        )
+
+    def test_uses_dag_scheduler_for_ready_steps(self):
+        executor = Executor(max_parallel_skills=2)
+
+        self.assertIsNotNone(executor.dag_scheduler)
+        self.assertEqual(executor.dag_scheduler.max_parallel_skills, 2)
+
+    def test_accepts_max_parallel_skills(self):
+        executor = Executor(max_parallel_skills=2)
+        self.assertEqual(executor.max_parallel_skills, 2)
+
     def test_executes_independent_steps_in_parallel(self):
         from core.execution_router import ExecutionRouter
         from threading import Event
@@ -535,6 +689,117 @@ class TestExecutor(unittest.TestCase):
 
         self.assertEqual(result.status, "completed")
         self.assertEqual(task.status, "completed")
+
+
+    def test_executor_respects_max_parallel_skills(self):
+        from core.execution_router import ExecutionRouter
+        from threading import Event, Lock
+
+        started = []
+        active = 0
+        max_active = 0
+        lock = Lock()
+        release_first_batch = Event()
+        release_all = Event()
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill", "").startswith("skill-")
+
+            def execute(self, step, task_id):
+                nonlocal active, max_active
+
+                with lock:
+                    started.append(step["skill"])
+                    active += 1
+                    max_active = max(max_active, active)
+
+                if len(started) <= 4:
+                    release_first_batch.wait(timeout=2)
+                else:
+                    release_all.wait(timeout=2)
+
+                with lock:
+                    active -= 1
+
+                return {
+                    "status": "completed",
+                    "task_id": task_id,
+                    "text": step["skill"],
+                }
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        executor = Executor(max_parallel_skills=4, execution_router=router)
+
+        plan = Plan(
+            request_id="req_parallel_capacity",
+            skills=[f"skill-{i}" for i in range(1, 6)],
+            steps=[
+                {
+                    "step": i,
+                    "skill": f"skill-{i}",
+                    "status": "pending",
+                    "depends_on": [],
+                    "execution_mode": "parallel",
+                    "backend": "test",
+                }
+                for i in range(1, 6)
+            ],
+        )
+
+        task = Task(
+            task_id="task_parallel_capacity",
+            request_id="req_parallel_capacity",
+            plan=plan,
+        )
+
+        import threading
+
+        worker = threading.Thread(target=lambda: executor.execute(task))
+        worker.start()
+
+        try:
+            for _ in range(100):
+                with lock:
+                    count = len(started)
+                if count >= 4:
+                    break
+                threading.Event().wait(0.01)
+
+            with lock:
+                self.assertEqual(len(started), 4)
+                self.assertEqual(max_active, 4)
+
+            release_first_batch.set()
+
+            for _ in range(100):
+                with lock:
+                    count = len(started)
+                if count >= 5:
+                    break
+                threading.Event().wait(0.01)
+
+            with lock:
+                self.assertEqual(len(started), 5)
+                self.assertEqual(max_active, 4)
+        finally:
+            release_first_batch.set()
+            release_all.set()
+
+        worker.join(timeout=3)
+
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(task.status, "completed")
+        self.assertCountEqual(
+            started,
+            ["skill-1", "skill-2", "skill-3", "skill-4", "skill-5"],
+        )
 
 
 if __name__ == "__main__":

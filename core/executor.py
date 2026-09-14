@@ -7,17 +7,20 @@ from .security_policy import SecurityPolicy
 from .execution_trace import ExecutionTrace
 from .skill_lifecycle import SkillLifecycleManager
 from .skill_registry import SkillRegistry
+from .dag_scheduler import DAGScheduler
 import time
 
 
 class Executor:
-    def __init__(self, skill_executor: SkillExecutor | None = None, execution_router: ExecutionRouter | None = None, security_policy: SecurityPolicy | None = None, execution_trace: ExecutionTrace | None = None, lifecycle: SkillLifecycleManager | None = None, registry: SkillRegistry | None = None):
+    def __init__(self, skill_executor: SkillExecutor | None = None, execution_router: ExecutionRouter | None = None, security_policy: SecurityPolicy | None = None, execution_trace: ExecutionTrace | None = None, lifecycle: SkillLifecycleManager | None = None, registry: SkillRegistry | None = None, max_parallel_skills: int = 4):
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router
         self.security_policy = security_policy or SecurityPolicy()
         self.execution_trace = execution_trace
         self.lifecycle = lifecycle or SkillLifecycleManager()
         self.registry = registry
+        self.max_parallel_skills = max_parallel_skills
+        self.dag_scheduler = DAGScheduler(max_parallel_skills=max_parallel_skills)
 
     def _execute_step(self, step: dict, task: Task):
         step["status"] = "running"
@@ -118,23 +121,36 @@ class Executor:
         try:
             index = 0
             while index < len(task.plan.steps):
-                step = task.plan.steps[index]
+                ready_steps = self.dag_scheduler.ready_steps(task.plan.steps)
+
+                if not ready_steps:
+                    pending_steps = [
+                        step
+                        for step in task.plan.steps
+                        if step.get("status") == "pending"
+                    ]
+                    if pending_steps:
+                        raise RuntimeError("No executable DAG steps are ready")
+                    break
+
+                step = ready_steps[0]
+                index = task.plan.steps.index(step)
                 task.current_step = index + 1
 
                 if step.get("execution_mode") == "parallel":
-                    group = []
-                    group_start = index
-                    while (
-                        index < len(task.plan.steps)
-                        and task.plan.steps[index].get("execution_mode") == "parallel"
-                    ):
-                        group.append(task.plan.steps[index])
-                        index += 1
+                    group = [
+                        ready_step
+                        for ready_step in ready_steps
+                        if ready_step.get("execution_mode") == "parallel"
+                    ]
+
+                    if not group:
+                        group = [step]
 
                     parallel_results = self._execute_parallel_steps(group, task)
 
-                    for group_offset, (step_result, _step_started) in enumerate(parallel_results):
-                        step_index = group_start + group_offset + 1
+                    for group_step, (step_result, _step_started) in zip(group, parallel_results):
+                        step_index = task.plan.steps.index(group_step) + 1
                         if isinstance(step_result, dict):
                             if step_result.get("text") is not None:
                                 result_text = str(step_result["text"])

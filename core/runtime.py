@@ -63,6 +63,7 @@ class Runtime:
             execution_trace=self.execution_trace,
             lifecycle=self.lifecycle,
             registry=self.registry,
+            max_parallel_skills=self.config.max_parallel_skills,
         )
     def prepare(
         self,
