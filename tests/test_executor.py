@@ -802,5 +802,36 @@ class TestExecutor(unittest.TestCase):
         )
 
 
+
+    def test_partial_success_preserves_completed_results(self):
+        from core.execution_router import ExecutionRouter
+
+        class Backend:
+            def execute(self, step, task_id):
+                if step["skill"] == "skill-b":
+                    raise RuntimeError("skill-b failed")
+                return {"status": "completed", "task_id": task_id, "text": step["skill"]}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+
+        plan = Plan(
+            request_id="req_partial",
+            skills=["skill-a", "skill-b"],
+            steps=[
+                {"step": 1, "skill": "skill-a", "backend": "test", "status": "pending"},
+                {"step": 2, "skill": "skill-b", "backend": "test", "status": "pending"},
+            ],
+        )
+        task = Task(task_id="task_partial", request_id="req_partial", plan=plan)
+
+        result = Executor(execution_router=router).execute(task)
+
+        self.assertEqual(result.status, "partial_success")
+        self.assertIn("skill-a", result.text)
+        self.assertTrue(result.warnings)
+        self.assertEqual(task.status, "partial_success")
+
+
 if __name__ == "__main__":
     unittest.main()

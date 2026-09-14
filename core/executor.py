@@ -186,7 +186,7 @@ class Executor:
             )
 
         except Exception as exc:
-            task.status = "failed"
+            task.status = "partial_success" if result_text or result_artifacts or result_sources else "failed"
             task.errors.append(str(exc))
 
             if task.plan.steps and task.current_step > 0:
@@ -197,6 +197,9 @@ class Executor:
 
             return Result(
                 task_id=task.task_id,
-                status="failed",
-                warnings=[str(exc)],
+                status=task.status,
+                text=result_text,
+                artifacts=result_artifacts,
+                sources=result_sources,
+                warnings=result_warnings + [str(exc)],
             )
