@@ -6,6 +6,21 @@ from core.skill_executor import SkillExecutor
 
 
 class TestRuntime(unittest.TestCase):
+    def test_uses_default_config_when_file_is_missing(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            runtime = Runtime(root)
+            self.assertEqual(runtime.config.max_parallel_skills, 4)
+            self.assertTrue(runtime.config.allow_multi_skill)
+
+    def test_loads_dispatcher_config(self):
+        runtime = Runtime(".")
+        self.assertEqual(runtime.config.max_parallel_skills, 4)
+        self.assertTrue(runtime.config.allow_multi_skill)
+        self.assertEqual(runtime.config.registry_path, "registry.yaml")
+        self.assertEqual(runtime.config.routing_path, "routing.yaml")
+
     def test_registers_openai_backend_when_factory_provided(self):
         from core.openai_backend import OpenAIBackend
         runtime = Runtime(".", openai_runner=lambda text: "ok")
