@@ -49,23 +49,6 @@ class DAGScheduler:
         for step_id in dependencies:
             visit(step_id)
 
-        visiting = set()
-        visited = set()
-
-        def visit(step_id):
-            if step_id in visiting:
-                raise ValueError(f"Cyclic dependency detected at step {step_id}")
-            if step_id in visited:
-                return
-
-            visiting.add(step_id)
-            for dependency in dependencies.get(step_id, []):
-                visit(dependency)
-            visiting.remove(step_id)
-            visited.add(step_id)
-
-        for step_id in dependencies:
-            visit(step_id)
 
     def ready_steps(self, steps: list[dict]) -> list[dict]:
         completed = {
