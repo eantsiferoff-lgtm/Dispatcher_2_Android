@@ -1,6 +1,6 @@
 import unittest
 
-from core.planner import Planner
+from core.planner import Planner, PlannerDecision
 from core.skill_registry import SkillRegistry
 
 
@@ -22,7 +22,7 @@ class TestPlanner(unittest.TestCase):
         self.assertTrue(all(0 <= c.score <= 1 for c in decision.candidates))
 
     def test_fallback_is_requested_for_low_confidence(self):
-        from core.planner import Planner
+        from core.planner import Planner, PlannerDecision
         planner = Planner.__new__(Planner)
         planner.registry = None
         class Decision:
@@ -65,7 +65,7 @@ class TestPlanner(unittest.TestCase):
 
     def test_low_confidence_calls_fallback(self):
         from core.skill_registry import SkillRegistry
-        from core.planner import Planner
+        from core.planner import Planner, PlannerDecision
         registry = SkillRegistry(".")
         calls = []
         planner = Planner(registry, fallback=lambda request: calls.append(request) or ["russian-investment-analysis"])
@@ -81,6 +81,16 @@ class TestPlanner(unittest.TestCase):
 
 
 
+
+
+    def test_planner_decision_can_store_workflow_id(self):
+        decision = PlannerDecision(
+            skills=["skill-a"],
+            workflow_id="market-report",
+            confidence=1.0,
+        )
+
+        self.assertEqual(decision.workflow_id, "market-report")
 
 
 if __name__ == "__main__":

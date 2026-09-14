@@ -18,6 +18,7 @@ class DispatcherConfig:
     verification_required: bool
     check_conflicts: bool
     distinguish_facts_calculations_assumptions: bool
+    workflows: dict[str, dict[str, Any]]
 
     @classmethod
     def from_file(cls, path: str | Path) -> "DispatcherConfig":
@@ -63,6 +64,7 @@ class DispatcherConfig:
             ),
             verification_required=bool(verification.get("required", True)),
             check_conflicts=bool(verification.get("check_conflicts", True)),
+            workflows=dict(data.get("workflows") or {}),
             distinguish_facts_calculations_assumptions=bool(
                 verification.get(
                     "distinguish_facts_calculations_assumptions",

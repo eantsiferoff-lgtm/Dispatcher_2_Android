@@ -19,6 +19,7 @@ class PlannerDecision:
     skills: list[str] = field(default_factory=list)
     candidates: list[PlanCandidate] = field(default_factory=list)
     confidence: float = 0.0
+    workflow_id: str | None = None
 
 
 class Planner:

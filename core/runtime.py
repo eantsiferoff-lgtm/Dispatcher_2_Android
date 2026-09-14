@@ -79,7 +79,14 @@ class Runtime:
         )
 
         decision = self.planner.plan(request.text)
-        plan = self.plan_builder.build(request.request_id, decision)
+
+        workflow = self._workflow_metadata(decision.workflow_id)
+
+        plan = self.plan_builder.build(
+            request.request_id,
+            decision,
+            workflow=workflow,
+        )
 
         task_id = self._task_id()
         self._request_texts[task_id] = request.text
@@ -108,6 +115,26 @@ class Runtime:
 
         result = self.executor.execute(task)
         return request, plan, task, result
+
+    def _workflow_metadata(
+        self,
+        workflow_id: str | None,
+    ) -> dict[str, dict]:
+        if not workflow_id:
+            return {}
+
+        workflow = self.config.workflows.get(workflow_id)
+        if not workflow:
+            return {}
+
+        return {
+            step["skill"]: {
+                "depends_on": list(step.get("depends_on", [])),
+                "execution_mode": step.get("execution_mode", "ordered"),
+            }
+            for step in workflow.get("steps", [])
+            if step.get("skill")
+        }
 
     @staticmethod
     def _request_id() -> str:

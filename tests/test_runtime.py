@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 
 from core.models import Request, Plan, Task
 from core.runtime import Runtime
@@ -153,6 +154,116 @@ class TestRuntime(unittest.TestCase):
         self.assertEqual(request.project_id, "project_001")
         self.assertEqual(task.project_id, "project_001")
         self.assertEqual(task.status, "pending")
+
+
+    def test_prepare_uses_workflow_from_dispatcher_config(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+
+            (root_path / "dispatcher.yaml").write_text(
+                """version: "2.0"
+registry: registry.yaml
+routing: routing.yaml
+orchestration:
+  allow_multi_skill: true
+  max_parallel_skills: 4
+workflows:
+  market-report:
+    steps:
+      - skill: russian-investment-analysis
+        depends_on: []
+        execution_mode: parallel
+""",
+                encoding="utf-8",
+            )
+
+            runtime = Runtime(root_path)
+
+            self.assertIn("market-report", runtime.config.workflows)
+
+            from core.planner import PlannerDecision
+            runtime.planner = type(
+                "StubPlanner",
+                (),
+                {
+                    "plan": lambda self, text: PlannerDecision(
+                        skills=["russian-investment-analysis"],
+                        workflow_id="market-report",
+                        confidence=1.0,
+                    )
+                },
+            )()
+
+            request, plan, task = runtime.prepare(
+                "Проанализируй российский фондовый рынок"
+            )
+
+            self.assertIn("russian-investment-analysis", plan.skills)
+            self.assertEqual(plan.steps[0]["depends_on"], [])
+            self.assertEqual(plan.steps[0]["execution_mode"], "parallel")
+
+
+    def test_prepare_passes_selected_workflow_to_plan_builder(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            root_path = Path(root)
+
+            (root_path / "dispatcher.yaml").write_text(
+                """version: "2.0"
+registry: registry.yaml
+routing: routing.yaml
+orchestration:
+  allow_multi_skill: true
+  max_parallel_skills: 4
+workflows:
+  market-report:
+    steps:
+      - skill: russian-investment-analysis
+        depends_on: []
+        execution_mode: parallel
+""",
+                encoding="utf-8",
+            )
+
+            runtime = Runtime(root_path)
+
+            from core.planner import PlannerDecision
+
+            runtime.planner = type(
+                "StubPlanner",
+                (),
+                {
+                    "plan": lambda self, text: PlannerDecision(
+                        skills=["russian-investment-analysis"],
+                        workflow_id="market-report",
+                        confidence=1.0,
+                    )
+                },
+            )()
+
+            captured = {}
+
+            class StubPlanBuilder:
+                def build(self, request_id, decision, workflow=None):
+                    captured["workflow"] = workflow
+                    return PlanBuilder().build(
+                        request_id,
+                        decision,
+                        workflow=workflow,
+                    )
+
+            from core.plan_builder import PlanBuilder
+            runtime.plan_builder = StubPlanBuilder()
+
+            runtime.prepare("Проанализируй российский фондовый рынок")
+
+            self.assertEqual(
+                captured["workflow"]["russian-investment-analysis"]["execution_mode"],
+                "parallel",
+            )
 
 
 if __name__ == "__main__":
