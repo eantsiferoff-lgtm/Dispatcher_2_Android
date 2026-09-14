@@ -56,5 +56,29 @@ class TestDAGScheduler(unittest.TestCase):
         self.assertEqual([step["step"] for step in ready], [1, 2])
 
 
+    def test_rejects_unknown_dependency(self):
+        steps = [
+            {
+                "step": 1,
+                "skill": "skill-a",
+                "status": "pending",
+                "depends_on": [99],
+                "execution_mode": "ordered",
+            },
+        ]
+
+        with self.assertRaises(ValueError):
+            self.scheduler.validate(steps)
+
+
+    def test_rejects_cyclic_dependency(self):
+        steps = [
+            {"step": 1, "skill": "skill-a", "status": "pending", "depends_on": [2]},
+            {"step": 2, "skill": "skill-b", "status": "pending", "depends_on": [1]},
+        ]
+        with self.assertRaises(ValueError):
+            self.scheduler.validate(steps)
+
+
 if __name__ == "__main__":
     unittest.main()
