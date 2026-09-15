@@ -28,6 +28,18 @@ class Executor:
         step["status"] = "running"
         step_started = time.perf_counter()
 
+        if self.execution_trace is not None:
+            self.execution_trace.record(
+                request_id=task.request_id,
+                task_id=task.task_id,
+                step=step.get("step", 0),
+                skill=step.get("skill", ""),
+                backend=step.get("backend"),
+                status="running",
+                duration_ms=0.0,
+                event_type="started",
+            )
+
         action = step.get("action")
         if action:
             confirmation = self.confirmation_engine.check(step)
@@ -204,7 +216,7 @@ class Executor:
                 failed_step = task.plan.steps[task.current_step - 1]
                 failed_step["status"] = "failed"
                 if self.execution_trace is not None:
-                    self.execution_trace.record(request_id=task.request_id, task_id=task.task_id, step=task.current_step, skill=failed_step.get("skill", ""), backend=failed_step.get("backend"), status="failed", duration_ms=(time.perf_counter() - step_started) * 1000.0 if "step_started" in locals() else 0.0, error=str(exc))
+                    self.execution_trace.record(request_id=task.request_id, task_id=task.task_id, step=task.current_step, skill=failed_step.get("skill", ""), backend=failed_step.get("backend"), status="failed", duration_ms=(time.perf_counter() - step_started) * 1000.0 if "step_started" in locals() else 0.0, error=str(exc), event_type="failed")
 
             return Result(
                 task_id=task.task_id,

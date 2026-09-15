@@ -592,9 +592,12 @@ class TestExecutor(unittest.TestCase):
         result = Executor(execution_router=router, security_policy=SecurityPolicy(), execution_trace=trace).execute(task)
         self.assertEqual(result.status, "failed")
         events = trace.events()
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["status"], "failed")
-        self.assertEqual(events[0]["error"], "backend boom")
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]["event_type"], "started")
+        self.assertEqual(events[0]["status"], "running")
+        self.assertEqual(events[1]["event_type"], "failed")
+        self.assertEqual(events[1]["status"], "failed")
+        self.assertEqual(events[1]["error"], "backend boom")
 
     def test_records_execution_trace(self):
         from core.execution_router import ExecutionRouter
@@ -610,12 +613,52 @@ class TestExecutor(unittest.TestCase):
         result = Executor(execution_router=router, security_policy=SecurityPolicy(), execution_trace=trace).execute(task)
         self.assertEqual(result.status, "completed")
         events = trace.events()
-        self.assertEqual(len(events), 1)
-        self.assertEqual(events[0]["request_id"], "req_011")
-        self.assertEqual(events[0]["task_id"], "task_011")
-        self.assertEqual(events[0]["skill"], "test-skill")
-        self.assertEqual(events[0]["backend"], "test")
-        self.assertEqual(events[0]["status"], "completed")
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0]["event_type"], "started")
+        self.assertEqual(events[1]["request_id"], "req_011")
+        self.assertEqual(events[1]["task_id"], "task_011")
+        self.assertEqual(events[1]["skill"], "test-skill")
+        self.assertEqual(events[1]["backend"], "test")
+        self.assertEqual(events[1]["status"], "completed")
+
+    def test_records_started_execution_trace(self):
+        from core.execution_trace import ExecutionTrace
+
+        trace = ExecutionTrace()
+        calls = []
+
+        class Backend:
+            def execute(self, step, task_id):
+                calls.append("executed")
+                return {"status": "completed", "task_id": task_id, "text": "ok"}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+
+        plan = Plan(
+            request_id="req_013",
+            skills=["test-skill"],
+            steps=[{
+                "step": 1,
+                "skill": "test-skill",
+                "action": "analyze",
+                "backend": "test",
+                "status": "pending",
+            }],
+        )
+        task = Task(task_id="task_013", request_id="req_013", plan=plan)
+
+        result = Executor(
+            execution_router=router,
+            security_policy=SecurityPolicy(),
+            execution_trace=trace,
+        ).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        events = trace.events()
+        self.assertEqual(events[0]["event_type"], "started")
+        self.assertEqual(events[0]["status"], "running")
+        self.assertEqual(calls, ["executed"])
 
     def test_security_policy_denies_unknown_action(self):
         from core.execution_router import ExecutionRouter

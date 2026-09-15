@@ -18,6 +18,7 @@ class ExecutionTrace:
         status: str,
         duration_ms: float,
         error: str | None = None,
+        event_type: str = "completed",
     ) -> None:
         self._events.append({
             "request_id": request_id,
@@ -28,6 +29,7 @@ class ExecutionTrace:
             "status": status,
             "duration_ms": duration_ms,
             "error": error,
+            "event_type": event_type,
         })
 
     def events(self) -> list[dict[str, Any]]:
