@@ -4,6 +4,7 @@ from core.executor import Executor
 from core.models import Plan, Task
 from core.skill_executor import SkillExecutor
 from core.security_policy import SecurityPolicy
+from core.execution_router import ExecutionRouter
 
 
 class TestExecutor(unittest.TestCase):
@@ -275,6 +276,32 @@ class TestExecutor(unittest.TestCase):
             ["completed", "completed", "completed"],
         )
         self.assertCountEqual(calls, ["skill-a", "skill-b", "skill-c"])
+
+    def test_parallel_consequential_action_requires_confirmation(self):
+        from core.execution_router import ExecutionRouter
+        calls = []
+        class Backend:
+            priority = 100
+            def available(self):
+                return True
+            def execute(self, step, task_id):
+                calls.append(step)
+                return {"status": "completed", "task_id": task_id}
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(
+            request_id="req_parallel_confirm",
+            skills=["skill-a", "skill-b"],
+            steps=[
+                {"step": 1, "skill": "skill-a", "status": "pending", "depends_on": [], "execution_mode": "parallel", "backend": "test", "action": "send"},
+                {"step": 2, "skill": "skill-b", "status": "pending", "depends_on": [], "execution_mode": "parallel", "backend": "test"},
+            ],
+        )
+        task = Task(task_id="task_parallel_confirm", request_id="req_parallel_confirm", plan=plan)
+        result = Executor(execution_router=router).execute(task)
+        self.assertEqual(result.status, "confirmation_required")
+        self.assertEqual(task.status, "confirmation_required")
+        self.assertNotEqual(task.status, "completed")
 
     def test_executes_steps_by_dag_readiness(self):
         from core.execution_router import ExecutionRouter
@@ -621,8 +648,8 @@ class TestExecutor(unittest.TestCase):
         plan = Plan(request_id="req_008", skills=["test-skill"], steps=[{"step": 1, "skill": "test-skill", "action": "send", "backend": "test", "status": "pending"}])
         task = Task(task_id="task_008", request_id="req_008", plan=plan)
         result = Executor(execution_router=router, security_policy=SecurityPolicy()).execute(task)
-        self.assertEqual(result.status, "failed")
-        self.assertEqual(task.status, "failed")
+        self.assertEqual(result.status, "confirmation_required")
+        self.assertEqual(task.status, "confirmation_required")
         self.assertEqual(calls, [])
         self.assertTrue(any("CONFIRM" in warning for warning in result.warnings))
 
@@ -832,6 +859,46 @@ class TestExecutor(unittest.TestCase):
         self.assertTrue(result.warnings)
         self.assertEqual(task.status, "partial_success")
 
+
+    def test_consequential_action_returns_confirmation_required(self):
+        from core.confirmation_engine import ConfirmationEngine
+
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def execute(self, step, task_id):
+                calls.append(step)
+                return {"status": "completed", "task_id": task_id}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        executor = Executor(
+            execution_router=router,
+            confirmation_engine=ConfirmationEngine(),
+        )
+
+        plan = Plan(
+            request_id="req_confirm",
+            skills=["russian-investment-analysis"],
+            steps=[{
+                "step": 1,
+                "skill": "russian-investment-analysis",
+                "status": "pending",
+                "backend": "test",
+                "action": "send",
+            }],
+        )
+        task = Task(task_id="task_confirm", request_id="req_confirm", plan=plan)
+
+        result = executor.execute(task)
+
+        self.assertEqual(result.status, "confirmation_required")
+        self.assertEqual(calls, [])
 
 if __name__ == "__main__":
     unittest.main()

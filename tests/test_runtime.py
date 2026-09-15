@@ -133,6 +133,33 @@ class TestRuntime(unittest.TestCase):
         self.assertEqual(calls[0][0], "russian-investment-analysis")
 
 
+
+    def test_run_requires_confirmation_before_consequential_action(self):
+        runtime = Runtime(".")
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def execute(self, step, task_id):
+                calls.append(step)
+                return {"status": "completed", "task_id": task_id}
+
+        runtime.execution_router.register("test", Backend())
+
+        request, plan, task = runtime.prepare("Проанализируй российский фондовый рынок")
+        plan.steps[0]["backend"] = "test"
+        plan.steps[0]["action"] = "send"
+
+        result = runtime.executor.execute(task)
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(calls, [])
+        self.assertIn("CONFIRM", result.warnings)
+
     def test_auto_refresh_lifecycle_can_be_enabled_or_disabled(self):
         runtime_on = Runtime(".", auto_refresh_lifecycle=True)
         runtime_off = Runtime(".", auto_refresh_lifecycle=False)
@@ -265,6 +292,32 @@ workflows:
                 "parallel",
             )
 
+
+    def test_run_requires_confirmation_before_consequential_action(self):
+        runtime = Runtime(".")
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def execute(self, step, task_id):
+                calls.append(step)
+                return {"status": "completed", "task_id": task_id}
+
+        runtime.execution_router.register("test", Backend())
+
+        request, plan, task = runtime.prepare("Проанализируй российский фондовый рынок")
+        plan.steps[0]["backend"] = "test"
+        plan.steps[0]["action"] = "send"
+
+        result = runtime.executor.execute(task)
+
+        self.assertEqual(result.status, "confirmation_required")
+        self.assertEqual(calls, [])
+        self.assertTrue(any("CONFIRM" in warning for warning in result.warnings))
 
 if __name__ == "__main__":
     unittest.main()

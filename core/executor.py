@@ -4,6 +4,7 @@ from .models import Result, Task
 from .skill_executor import SkillExecutor
 from .execution_router import ExecutionRouter
 from .security_policy import SecurityPolicy
+from .confirmation_engine import ConfirmationEngine
 from .execution_trace import ExecutionTrace
 from .skill_lifecycle import SkillLifecycleManager
 from .skill_registry import SkillRegistry
@@ -12,10 +13,11 @@ import time
 
 
 class Executor:
-    def __init__(self, skill_executor: SkillExecutor | None = None, execution_router: ExecutionRouter | None = None, security_policy: SecurityPolicy | None = None, execution_trace: ExecutionTrace | None = None, lifecycle: SkillLifecycleManager | None = None, registry: SkillRegistry | None = None, max_parallel_skills: int = 4):
+    def __init__(self, skill_executor: SkillExecutor | None = None, execution_router: ExecutionRouter | None = None, security_policy: SecurityPolicy | None = None, confirmation_engine: ConfirmationEngine | None = None, execution_trace: ExecutionTrace | None = None, lifecycle: SkillLifecycleManager | None = None, registry: SkillRegistry | None = None, max_parallel_skills: int = 4):
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router
         self.security_policy = security_policy or SecurityPolicy()
+        self.confirmation_engine = confirmation_engine or ConfirmationEngine(self.security_policy)
         self.execution_trace = execution_trace
         self.lifecycle = lifecycle or SkillLifecycleManager()
         self.registry = registry
@@ -28,10 +30,13 @@ class Executor:
 
         action = step.get("action")
         if action:
-            policy_result = self.security_policy.check(action)
-            if policy_result != "SAFE":
+            confirmation = self.confirmation_engine.check(step)
+            if confirmation["status"] == "confirmation_required":
+                step["status"] = "confirmation_required"
+                return confirmation, step_started
+            if confirmation["status"] == "denied":
                 raise RuntimeError(
-                    f"Security policy: {policy_result} for action: {action}"
+                    f"Security policy: DENY for action: {action}"
                 )
 
         backend_name = step.get("backend")
@@ -151,6 +156,9 @@ class Executor:
 
                     for group_step, (step_result, _step_started) in zip(group, parallel_results):
                         step_index = task.plan.steps.index(group_step) + 1
+                        if isinstance(step_result, dict) and step_result.get("status") == "confirmation_required":
+                            task.status = "confirmation_required"
+                            return Result(task_id=task.task_id, status="confirmation_required", warnings=["Security policy: CONFIRM for action: " + str(step_result.get("action", ""))])
                         if isinstance(step_result, dict):
                             if step_result.get("text") is not None:
                                 result_text = str(step_result["text"])
@@ -162,6 +170,9 @@ class Executor:
                                 task.plan.steps[step_index]["input"] = step_result.get("text", "")
                 else:
                     step_result, _step_started = self._execute_step(step, task)
+                    if isinstance(step_result, dict) and step_result.get("status") == "confirmation_required":
+                        task.status = "confirmation_required"
+                        return Result(task_id=task.task_id, status="confirmation_required", warnings=["Security policy: CONFIRM for action: " + str(step_result.get("action", ""))])
                     index += 1
 
                     if isinstance(step_result, dict):
