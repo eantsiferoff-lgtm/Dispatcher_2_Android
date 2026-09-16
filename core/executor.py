@@ -158,6 +158,7 @@ class Executor:
         result_warnings = []
 
         try:
+            self.dag_scheduler.validate(task.plan.steps)
             index = 0
             while index < len(task.plan.steps):
                 ready_steps = self.dag_scheduler.ready_steps(task.plan.steps)

@@ -375,6 +375,54 @@ class TestExecutor(unittest.TestCase):
             ["completed", "completed", "completed"],
         )
 
+    def test_rejects_invalid_dag_before_execution(self):
+        from core.execution_router import ExecutionRouter
+
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return True
+
+            def execute(self, step, task_id):
+                calls.append(step["skill"])
+                return {"status": "completed", "task_id": task_id}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+
+        plan = Plan(
+            request_id="req_invalid_dag",
+            skills=["skill-a"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "skill-a",
+                    "status": "pending",
+                    "depends_on": [99],
+                    "execution_mode": "ordered",
+                    "backend": "test",
+                },
+            ],
+        )
+        task = Task(
+            task_id="task_invalid_dag",
+            request_id="req_invalid_dag",
+            plan=plan,
+        )
+
+        result = Executor(execution_router=router).execute(task)
+
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(task.status, "failed")
+        self.assertEqual(calls, [])
+        self.assertIn("Unknown dependency", result.warnings[0])
+
     def test_uses_dag_scheduler_for_ready_steps(self):
         executor = Executor(max_parallel_skills=2)
 
