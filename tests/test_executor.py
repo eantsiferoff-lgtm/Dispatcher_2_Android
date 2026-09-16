@@ -592,12 +592,14 @@ class TestExecutor(unittest.TestCase):
         result = Executor(execution_router=router, security_policy=SecurityPolicy(), execution_trace=trace).execute(task)
         self.assertEqual(result.status, "failed")
         events = trace.events()
-        self.assertEqual(len(events), 2)
+        self.assertEqual(len(events), 3)
         self.assertEqual(events[0]["event_type"], "started")
         self.assertEqual(events[0]["status"], "running")
-        self.assertEqual(events[1]["event_type"], "failed")
-        self.assertEqual(events[1]["status"], "failed")
-        self.assertEqual(events[1]["error"], "backend boom")
+        self.assertEqual(events[1]["event_type"], "backend_selected")
+        self.assertEqual(events[1]["backend"], "test")
+        self.assertEqual(events[2]["event_type"], "failed")
+        self.assertEqual(events[2]["status"], "failed")
+        self.assertEqual(events[2]["error"], "backend boom")
 
     def test_records_execution_trace(self):
         from core.execution_router import ExecutionRouter
@@ -613,13 +615,15 @@ class TestExecutor(unittest.TestCase):
         result = Executor(execution_router=router, security_policy=SecurityPolicy(), execution_trace=trace).execute(task)
         self.assertEqual(result.status, "completed")
         events = trace.events()
-        self.assertEqual(len(events), 2)
+        self.assertEqual(len(events), 3)
         self.assertEqual(events[0]["event_type"], "started")
-        self.assertEqual(events[1]["request_id"], "req_011")
-        self.assertEqual(events[1]["task_id"], "task_011")
-        self.assertEqual(events[1]["skill"], "test-skill")
+        self.assertEqual(events[1]["event_type"], "backend_selected")
         self.assertEqual(events[1]["backend"], "test")
-        self.assertEqual(events[1]["status"], "completed")
+        self.assertEqual(events[2]["request_id"], "req_011")
+        self.assertEqual(events[2]["task_id"], "task_011")
+        self.assertEqual(events[2]["skill"], "test-skill")
+        self.assertEqual(events[2]["backend"], "test")
+        self.assertEqual(events[2]["status"], "completed")
 
     def test_records_started_execution_trace(self):
         from core.execution_trace import ExecutionTrace
@@ -942,6 +946,94 @@ class TestExecutor(unittest.TestCase):
 
         self.assertEqual(result.status, "confirmation_required")
         self.assertEqual(calls, [])
+
+    def test_records_backend_selected_execution_trace(self):
+        from core.execution_trace import ExecutionTrace
+
+        trace = ExecutionTrace()
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") == "test-skill"
+
+            def execute(self, step, task_id):
+                return {"status": "completed", "task_id": task_id, "text": "ok"}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(
+            request_id="req_014",
+            skills=["test-skill"],
+            steps=[{
+                "step": 1,
+                "skill": "test-skill",
+                "status": "pending",
+            }],
+        )
+        task = Task(task_id="task_014", request_id="req_014", plan=plan)
+
+        result = Executor(execution_router=router, execution_trace=trace).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        events = trace.events()
+        self.assertEqual(events[0]["event_type"], "started")
+        self.assertEqual(events[1]["event_type"], "backend_selected")
+        self.assertEqual(events[1]["backend"], "test")
+        self.assertEqual(events[1]["status"], "selected")
+        self.assertEqual(events[2]["event_type"], "completed")
+
+
+    def test_records_confirmation_required_execution_trace(self):
+        from core.execution_trace import ExecutionTrace
+        from core.confirmation_engine import ConfirmationEngine
+
+        trace = ExecutionTrace()
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def execute(self, step, task_id):
+                calls.append("executed")
+                return {"status": "completed", "task_id": task_id}
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+        plan = Plan(
+            request_id="req_015",
+            skills=["test-skill"],
+            steps=[{
+                "step": 1,
+                "skill": "test-skill",
+                "backend": "test",
+                "action": "send",
+                "status": "pending",
+            }],
+        )
+        task = Task(task_id="task_015", request_id="req_015", plan=plan)
+
+        result = Executor(
+            execution_router=router,
+            confirmation_engine=ConfirmationEngine(),
+            execution_trace=trace,
+        ).execute(task)
+
+        self.assertEqual(result.status, "confirmation_required")
+        events = trace.events()
+        self.assertEqual(events[0]["event_type"], "started")
+        self.assertEqual(events[1]["event_type"], "confirmation_required")
+        self.assertEqual(events[1]["status"], "confirmation_required")
+        self.assertEqual(events[1]["backend"], "test")
+        self.assertEqual(calls, [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -45,6 +45,17 @@ class Executor:
             confirmation = self.confirmation_engine.check(step)
             if confirmation["status"] == "confirmation_required":
                 step["status"] = "confirmation_required"
+                if self.execution_trace is not None:
+                    self.execution_trace.record(
+                        request_id=task.request_id,
+                        task_id=task.task_id,
+                        step=step.get("step", 0),
+                        skill=step.get("skill", ""),
+                        backend=step.get("backend"),
+                        status="confirmation_required",
+                        duration_ms=(time.perf_counter() - step_started) * 1000.0,
+                        event_type="confirmation_required",
+                    )
                 return confirmation, step_started
             if confirmation["status"] == "denied":
                 raise RuntimeError(
@@ -59,6 +70,17 @@ class Executor:
                 step["backend"] = backend_name
 
         if backend_name:
+            if self.execution_trace is not None:
+                self.execution_trace.record(
+                    request_id=task.request_id,
+                    task_id=task.task_id,
+                    step=step.get("step", 0),
+                    skill=step.get("skill", ""),
+                    backend=backend_name,
+                    status="selected",
+                    duration_ms=(time.perf_counter() - step_started) * 1000.0,
+                    event_type="backend_selected",
+                )
             if self.execution_router is None:
                 raise RuntimeError(
                     "ExecutionRouter is required for backend execution"
