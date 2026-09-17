@@ -22,6 +22,7 @@ class Runtime:
     def __init__(
         self,
         root: str | Path,
+        data_root: str | Path | None = None,
         skill_executor: SkillExecutor | None = None,
         execution_router: ExecutionRouter | None = None,
         openai_runner=None,
@@ -29,8 +30,9 @@ class Runtime:
         auto_refresh_lifecycle: bool = True,
     ):
         self.root = Path(root)
+        self.data_root = Path(data_root) if data_root is not None else self.root
         self.config = DispatcherConfig.from_file(self.root / "dispatcher.yaml")
-        self.lifecycle_store = JsonSkillLifecycleStore(self.root / "state" / "skill_lifecycle.json")
+        self.lifecycle_store = JsonSkillLifecycleStore(self.data_root / "state" / "skill_lifecycle.json")
         self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
         self.lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
         self.auto_refresh_lifecycle = auto_refresh_lifecycle
