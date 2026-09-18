@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -30,7 +31,8 @@ class Runtime:
         auto_refresh_lifecycle: bool = True,
     ):
         self.root = Path(root)
-        self.data_root = Path(data_root) if data_root is not None else self.root
+        configured_data_root = os.getenv("DISPATCHER_DATA_DIR")
+        self.data_root = Path(data_root or configured_data_root or self.root)
         self.config = DispatcherConfig.from_file(self.root / "dispatcher.yaml")
         self.lifecycle_store = JsonSkillLifecycleStore(self.data_root / "state" / "skill_lifecycle.json")
         self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
