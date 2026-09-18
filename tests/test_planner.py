@@ -93,5 +93,17 @@ class TestPlanner(unittest.TestCase):
         self.assertEqual(decision.workflow_id, "market-report")
 
 
+
+    def test_routing_engine_has_priority(self):
+        from core.routing_engine import RoutingEngine
+        routing = RoutingEngine("routing.yaml", SkillRegistry("."))
+        planner = Planner(SkillRegistry("."), routing_engine=routing)
+        decision = planner.plan("МОEX")
+        self.assertEqual(decision.skills, ["russian-investment-analysis"])
+        self.assertEqual(decision.confidence, 1.0)
+        self.assertEqual(len(decision.candidates), 1)
+        self.assertEqual(decision.candidates[0].score, 1.0)
+        self.assertEqual(decision.candidates[0].reason, "routing.yaml")
+
 if __name__ == "__main__":
     unittest.main()

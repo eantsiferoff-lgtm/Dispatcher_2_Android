@@ -23,11 +23,12 @@ class PlannerDecision:
 
 
 class Planner:
-    def __init__(self, registry: SkillRegistry, fallback=None, fallback_threshold: float = 0.20):
+    def __init__(self, registry: SkillRegistry, fallback=None, fallback_threshold: float = 0.20, routing_engine=None):
         self.registry = registry
         self.index = CapabilityIndex(registry)
         self.fallback = fallback
         self.fallback_threshold = fallback_threshold
+        self.routing_engine = routing_engine
 
     @staticmethod
     def _normalize(text: str) -> str:
@@ -48,6 +49,11 @@ class Planner:
 
     def plan(self, request: str) -> PlannerDecision:
         text = self._normalize(request)
+
+        routed_skills: list[str] = []
+        if self.routing_engine is not None:
+            routed_skills = self.routing_engine.route(request)
+
         candidates: list[PlanCandidate] = []
 
         for skill in self.registry.domain():
@@ -124,16 +130,41 @@ class Planner:
             reverse=True,
         )
 
-        skills = [
+        routed_candidates = [
+            PlanCandidate(
+                skill_id=skill_id,
+                score=1.0,
+                reason="routing.yaml",
+            )
+            for skill_id in routed_skills
+        ]
+
+        routed_ids = set(routed_skills)
+        candidates = routed_candidates + [
+            candidate
+            for candidate in candidates
+            if candidate.skill_id not in routed_ids
+        ]
+
+        planned_skills = [
             candidate.skill_id
             for candidate in candidates
             if candidate.score >= 0.20
         ]
 
+        skills = []
+        for skill_id in routed_skills + planned_skills:
+            if skill_id not in skills:
+                skills.append(skill_id)
+
         confidence = (
-            candidates[0].score
-            if candidates
-            else 0.0
+            1.0
+            if routed_skills
+            else (
+                candidates[0].score
+                if candidates
+                else 0.0
+            )
         )
 
         decision = PlannerDecision(
