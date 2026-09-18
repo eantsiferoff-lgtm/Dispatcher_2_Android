@@ -17,6 +17,7 @@ from .skill_registry import SkillRegistry
 from .skill_lifecycle import SkillLifecycleManager
 from .skill_lifecycle_store import JsonSkillLifecycleStore
 from .config import DispatcherConfig
+from .data_paths import DataPaths
 
 
 class Runtime:
@@ -33,8 +34,9 @@ class Runtime:
         self.root = Path(root)
         configured_data_root = os.getenv("DISPATCHER_DATA_DIR")
         self.data_root = Path(data_root or configured_data_root or self.root)
+        self.data_paths = DataPaths(self.data_root)
         self.config = DispatcherConfig.from_file(self.root / "dispatcher.yaml")
-        self.lifecycle_store = JsonSkillLifecycleStore(self.data_root / "state" / "skill_lifecycle.json")
+        self.lifecycle_store = JsonSkillLifecycleStore(self.data_paths.state / "skill_lifecycle.json")
         self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
         self.lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
         self.auto_refresh_lifecycle = auto_refresh_lifecycle
