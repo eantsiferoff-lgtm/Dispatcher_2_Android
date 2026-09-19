@@ -18,7 +18,6 @@ from .skill_lifecycle import SkillLifecycleManager
 from .skill_lifecycle_store import JsonSkillLifecycleStore
 from .config import DispatcherConfig
 from .data_paths import DataPaths
-from .routing_engine import RoutingEngine
 
 
 class Runtime:
@@ -39,12 +38,11 @@ class Runtime:
         self.config = DispatcherConfig.from_file(self.root / "dispatcher.yaml")
         self.lifecycle_store = JsonSkillLifecycleStore(self.data_paths.state / "skill_lifecycle.json")
         self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
-        self.routing_engine = RoutingEngine(self.root / self.config.routing_path, self.registry)
         self.lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
         self.auto_refresh_lifecycle = auto_refresh_lifecycle
         if self.auto_refresh_lifecycle:
             self.registry.refresh_lifecycle(self.lifecycle)
-        self.planner = Planner(self.registry, routing_engine=self.routing_engine)
+        self.planner = Planner(self.registry)
         self.plan_builder = PlanBuilder()
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router or ExecutionRouter()

@@ -12,10 +12,7 @@ class RoutingEngine:
     def __init__(self, routing_path: str | Path, registry: SkillRegistry):
         self.routing_path = Path(routing_path)
         self.registry = registry
-        if self.routing_path.exists():
-            data = yaml.safe_load(self.routing_path.read_text(encoding="utf-8")) or {}
-        else:
-            data = {}
+        data = yaml.safe_load(self.routing_path.read_text(encoding="utf-8")) or {}
         self.rules: list[dict[str, Any]] = list(data.get("rules") or [])
 
     @staticmethod

@@ -22,11 +22,6 @@ class TestRuntime(unittest.TestCase):
         self.assertEqual(runtime.config.registry_path, "registry.yaml")
         self.assertEqual(runtime.config.routing_path, "routing.yaml")
 
-    def test_creates_routing_engine(self):
-        runtime = Runtime(".")
-        self.assertIsNotNone(runtime.routing_engine)
-        self.assertEqual(runtime.routing_engine.routing_path, Path("routing.yaml"))
-
     def test_registers_openai_backend_when_factory_provided(self):
         from core.openai_backend import OpenAIBackend
         runtime = Runtime(".", openai_runner=lambda text: "ok")
