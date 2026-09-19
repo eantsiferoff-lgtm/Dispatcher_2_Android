@@ -92,5 +92,47 @@ class TestPipeline(unittest.TestCase):
             [("russian-investment-analysis", "TASK-INTEGRATION-001")],
         )
 
+    def test_planner_to_local_backend_pipeline(self):
+        from core.local_backend import LocalBackend
+        from core.execution_router import ExecutionRouter
+
+        registry = SkillRegistry(".")
+        planner = Planner(registry)
+
+        request = Request(
+            request_id="REQ-LOCAL-001",
+            text="Проанализируй российский фондовый рынок",
+        )
+
+        decision = planner.plan(request.text)
+        plan = PlanBuilder().build(request.request_id, decision)
+
+        calls = []
+
+        def handler(step, task_id):
+            calls.append((step["skill"], task_id))
+            return {"text": "local-backend-ok"}
+
+        backend = LocalBackend()
+        backend.register("russian-investment-analysis", handler)
+
+        router = ExecutionRouter()
+        router.register("local", backend)
+
+        task = Task(
+            task_id="TASK-LOCAL-001",
+            request_id=request.request_id,
+            plan=plan,
+        )
+
+        result = Executor(execution_router=router).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+        self.assertEqual(
+            calls,
+            [("russian-investment-analysis", "TASK-LOCAL-001")],
+        )
+
 if __name__ == "__main__":
     unittest.main()
