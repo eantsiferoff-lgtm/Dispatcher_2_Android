@@ -4,6 +4,7 @@ from core.models import Request, Plan, Task, Result
 from core.skill_registry import SkillRegistry
 from core.planner import Planner
 from core.plan_builder import PlanBuilder
+from core.execution_trace import ExecutionTrace
 from core.skill_executor import SkillExecutor
 from core.executor import Executor
 
@@ -105,7 +106,16 @@ class TestPipeline(unittest.TestCase):
         )
 
         decision = planner.plan(request.text)
-        plan = PlanBuilder().build(request.request_id, decision)
+        plan = PlanBuilder().build(
+            request.request_id,
+            decision,
+            workflow={
+                "russian-investment-analysis": {
+                    "depends_on": [],
+                    "execution_mode": "ai",
+                }
+            },
+        )
 
         calls = []
 
@@ -133,6 +143,68 @@ class TestPipeline(unittest.TestCase):
             calls,
             [("russian-investment-analysis", "TASK-LOCAL-001")],
         )
+
+    def test_planner_to_openai_backend_pipeline(self):
+        from core.openai_backend import OpenAIBackend
+        from core.execution_router import ExecutionRouter
+
+        registry = SkillRegistry(".")
+        planner = Planner(registry)
+
+        request = Request(
+            request_id="REQ-OPENAI-001",
+            text="Проанализируй российский фондовый рынок",
+        )
+
+        decision = planner.plan(request.text)
+        plan = PlanBuilder().build(
+            request.request_id,
+            decision,
+            workflow={
+                "russian-investment-analysis": {
+                    "depends_on": [],
+                    "execution_mode": "ai",
+                }
+            },
+        )
+
+        calls = []
+
+        def runner(request_text):
+            calls.append(request_text)
+            return "openai-backend-ok"
+
+        backend = OpenAIBackend(
+            agent_runner=runner,
+            request_provider=lambda task_id: request.text,
+        )
+
+        router = ExecutionRouter()
+        router.register("openai", backend)
+
+        task = Task(
+            task_id="TASK-OPENAI-001",
+            request_id=request.request_id,
+            plan=plan,
+        )
+
+        trace = ExecutionTrace()
+
+        result = Executor(
+            execution_router=router,
+            execution_trace=trace,
+        ).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+        self.assertEqual(calls, [request.text])
+
+        events = trace.__dict__["_events"]
+        self.assertTrue(any(
+            event["event_type"] == "backend_selected"
+            and event["backend"] == "openai"
+            for event in events
+        ))
 
 if __name__ == "__main__":
     unittest.main()
