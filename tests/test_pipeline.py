@@ -351,5 +351,50 @@ class TestPipeline(unittest.TestCase):
             for event in events
         ))
 
+    def test_runtime_to_real_n8n_production_pipeline(self):
+        import os
+        from pathlib import Path
+        from dotenv import dotenv_values
+
+        env = dotenv_values(".env")
+
+        from core.planner import PlannerDecision
+        from core.runtime import Runtime
+
+        n8n_webhook_url = env.get("N8N_WEBHOOK_URL")
+        if not n8n_webhook_url:
+            self.skipTest("N8N_WEBHOOK_URL is not set")
+
+        previous_n8n_url = os.environ.get("N8N_WEBHOOK_URL")
+        os.environ["N8N_WEBHOOK_URL"] = n8n_webhook_url
+        try:
+            runtime = Runtime(Path("."))
+
+            runtime.planner = type(
+                "StubPlanner",
+                (),
+                {
+                    "plan": lambda self, text: PlannerDecision(
+                        skills=["n8n"],
+                        confidence=1.0,
+                        workflow_id="n8n-production",
+                    )
+                },
+            )()
+
+            request, plan, task, result = runtime.run(
+                "Запусти опубликованный n8n workflow"
+            )
+
+            self.assertEqual(result.status, "completed")
+            self.assertEqual(task.status, "completed")
+            self.assertEqual(plan.steps[0]["backend"], "n8n")
+            self.assertEqual(plan.steps[0]["workflow"], "n8n-production")
+        finally:
+            if previous_n8n_url is not None:
+                os.environ["N8N_WEBHOOK_URL"] = previous_n8n_url
+            else:
+                os.environ.pop("N8N_WEBHOOK_URL", None)
+
 if __name__ == "__main__":
     unittest.main()

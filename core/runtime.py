@@ -9,6 +9,8 @@ from .skill_executor import SkillExecutor
 from .execution_router import ExecutionRouter
 from .local_backend import LocalBackend
 from .openai_backend import OpenAIBackend
+from .n8n_backend import N8NBackend
+from .n8n_client import N8NClient
 from .execution_trace import ExecutionTrace
 from .models import Request, Plan, Task, Result
 from .planner import Planner
@@ -61,6 +63,12 @@ class Runtime:
                     agent_runner=openai_runner,
                     request_provider=lambda task_id: self._request_texts[task_id],
                 ),
+            )
+        n8n_webhook_url = os.getenv("N8N_WEBHOOK_URL")
+        if n8n_webhook_url and self.execution_router.select("n8n") is None:
+            self.execution_router.register(
+                "n8n",
+                N8NBackend(client=N8NClient(n8n_webhook_url)),
             )
 
         self.executor = Executor(

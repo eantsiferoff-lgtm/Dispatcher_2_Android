@@ -12,3 +12,12 @@ verification:
   required: true
   check_conflicts: true
   distinguish_facts_calculations_assumptions: true
+
+workflows:
+  n8n-production:
+    steps:
+      - skill: n8n
+        depends_on: []
+        execution_mode: ordered
+        backend: n8n
+        workflow: n8n-production
