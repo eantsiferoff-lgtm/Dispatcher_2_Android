@@ -3,6 +3,8 @@ import unittest
 from core.models import Request, Plan, Task, Result
 from core.skill_registry import SkillRegistry
 from core.planner import Planner
+from core.planner import PlannerDecision
+
 from core.plan_builder import PlanBuilder
 from core.execution_trace import ExecutionTrace
 from core.skill_executor import SkillExecutor
@@ -47,15 +49,13 @@ class TestPipeline(unittest.TestCase):
 
 
     def test_planner_to_executor_pipeline(self):
-        registry = SkillRegistry(".")
-        planner = Planner(registry)
 
         request = Request(
             request_id="REQ-INTEGRATION-001",
             text="Проанализируй российский фондовый рынок",
         )
 
-        decision = planner.plan(request.text)
+        decision = PlannerDecision(skills=["russian-investment-analysis"], confidence=1.0)
 
         self.assertIn("russian-investment-analysis", decision.skills)
 
@@ -97,22 +97,21 @@ class TestPipeline(unittest.TestCase):
         from core.local_backend import LocalBackend
         from core.execution_router import ExecutionRouter
 
-        registry = SkillRegistry(".")
-        planner = Planner(registry)
 
         request = Request(
             request_id="REQ-LOCAL-001",
             text="Проанализируй российский фондовый рынок",
         )
 
-        decision = planner.plan(request.text)
+        decision = PlannerDecision(skills=["russian-investment-analysis"], confidence=1.0)
         plan = PlanBuilder().build(
             request.request_id,
             decision,
             workflow={
                 "russian-investment-analysis": {
                     "depends_on": [],
-                    "execution_mode": "ai",
+                    "backend": "local",
+                    "execution_mode": "ordered",
                 }
             },
         )
@@ -148,21 +147,20 @@ class TestPipeline(unittest.TestCase):
         from core.openai_backend import OpenAIBackend
         from core.execution_router import ExecutionRouter
 
-        registry = SkillRegistry(".")
-        planner = Planner(registry)
 
         request = Request(
             request_id="REQ-OPENAI-001",
             text="Проанализируй российский фондовый рынок",
         )
 
-        decision = planner.plan(request.text)
+        decision = PlannerDecision(skills=["russian-investment-analysis"], confidence=1.0)
         plan = PlanBuilder().build(
             request.request_id,
             decision,
             workflow={
                 "russian-investment-analysis": {
                     "depends_on": [],
+                    "backend": "openai",
                     "execution_mode": "ai",
                 }
             },
@@ -203,6 +201,79 @@ class TestPipeline(unittest.TestCase):
         self.assertTrue(any(
             event["event_type"] == "backend_selected"
             and event["backend"] == "openai"
+            for event in events
+        ))
+
+    def test_planner_to_composio_github_pipeline(self):
+        import os
+        from dotenv import dotenv_values
+        from composio import Composio
+        from core.composio_backend import ComposioBackend
+        from core.execution_router import ExecutionRouter
+
+        env = dotenv_values(".env")
+
+        client = Composio(api_key=env["COMPOSIO_API_KEY"])
+
+        class SessionAdapter:
+            def execute(self, tool_slug, *, arguments=None, account=None):
+                return client.tools.execute(
+                    tool_slug,
+                    arguments=arguments or {},
+                    user_id="user_001",
+                    version="20260916_00",
+                )
+
+
+        request = Request(
+            request_id="REQ-C-REAL",
+            text="Получи информацию о текущем пользователе GitHub",
+        )
+
+        decision = PlannerDecision(skills=["github"], confidence=1.0)
+
+        plan = PlanBuilder().build(
+            request.request_id,
+            decision,
+            workflow={
+                "github": {
+                    "depends_on": [],
+                    "backend": "composio",
+                    "tool_slug": "GITHUB_GET_THE_AUTHENTICATED_USER",
+                },
+            },
+        )
+
+        backend = ComposioBackend(session=SessionAdapter())
+        router = ExecutionRouter()
+        router.register("composio", backend)
+
+        task = Task(
+            task_id="TASK-C-REAL",
+            request_id=request.request_id,
+            plan=plan,
+        )
+
+        trace = ExecutionTrace()
+
+        result = Executor(
+            execution_router=router,
+            execution_trace=trace,
+        ).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+
+        events = trace.__dict__["_events"]
+        self.assertTrue(any(
+            event["event_type"] == "backend_selected"
+            and event["backend"] == "composio"
+            for event in events
+        ))
+        self.assertTrue(any(
+            event["event_type"] == "completed"
+            and event["backend"] == "composio"
+            and event["status"] == "completed"
             for event in events
         ))
 

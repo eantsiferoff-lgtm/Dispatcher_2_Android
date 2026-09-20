@@ -29,6 +29,36 @@ class TestPlanBuilder(unittest.TestCase):
         self.assertEqual(plan.steps[1]["execution_mode"], "ordered")
 
 
+    def test_builds_composio_step_with_tool_slug(self):
+        decision = PlannerDecision(
+            skills=["github"],
+            confidence=1.0,
+        )
+
+        workflow = {
+            "github": {
+                "depends_on": [],
+                "execution_mode": "ordered",
+                "backend": "composio",
+                "tool_slug": "GITHUB_GET_THE_AUTHENTICATED_USER",
+            },
+        }
+
+        plan = PlanBuilder().build(
+            "req_composio_001",
+            decision,
+            workflow=workflow,
+        )
+
+        self.assertEqual(
+            plan.steps[0]["backend"],
+            "composio",
+        )
+        self.assertEqual(
+            plan.steps[0]["tool_slug"],
+            "GITHUB_GET_THE_AUTHENTICATED_USER",
+        )
+
     def test_builds_dag_steps_from_workflow_metadata(self):
         decision = PlannerDecision(
             skills=["skill-a", "skill-b", "skill-c"],

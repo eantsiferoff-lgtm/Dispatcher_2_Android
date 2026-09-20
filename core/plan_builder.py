@@ -20,9 +20,13 @@ class PlanBuilder:
                 metadata = workflow[skill_id]
                 depends_on = list(metadata.get("depends_on", []))
                 execution_mode = metadata.get("execution_mode", "ordered")
+                backend = metadata.get("backend")
+                tool_slug = metadata.get("tool_slug")
             else:
                 depends_on = [] if index == 1 else [index - 1]
                 execution_mode = "ordered"
+                backend = None
+                tool_slug = None
 
             steps.append(
                 {
@@ -31,6 +35,8 @@ class PlanBuilder:
                     "status": "pending",
                     "depends_on": depends_on,
                     "execution_mode": execution_mode,
+                    **({"backend": backend} if backend else {}),
+                    **({"tool_slug": tool_slug} if tool_slug else {}),
                 }
             )
 
