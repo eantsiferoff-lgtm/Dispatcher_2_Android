@@ -84,7 +84,11 @@ class Runtime:
             project_id=project_id,
         )
 
+        if self.execution_trace is not None:
+            self.execution_trace.record(request_id=request.request_id, task_id="", step=0, skill="", backend=None, status="received", duration_ms=0.0, event_type="request")
         decision = self.planner.plan(request.text)
+        if self.execution_trace is not None:
+            self.execution_trace.record(request_id=request.request_id, task_id="", step=0, skill="", backend=None, status="selected", duration_ms=0.0, event_type="planner_decision", skills=list(decision.skills), confidence=decision.confidence, workflow_id=decision.workflow_id)
 
         workflow = self._workflow_metadata(decision.workflow_id)
 
@@ -105,6 +109,9 @@ class Runtime:
             plan=plan,
         )
 
+        if self.execution_trace is not None:
+            self.execution_trace.record(request_id=request.request_id, task_id=task_id, step=0, skill="", backend=None, status="built", duration_ms=0.0, event_type="plan_built", skills=list(plan.skills), steps=list(plan.steps))
+            self.execution_trace.record(request_id=request.request_id, task_id=task_id, step=0, skill="", backend=None, status=task.status, duration_ms=0.0, event_type="task_created")
         return request, plan, task
 
     def run(

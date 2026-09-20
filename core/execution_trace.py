@@ -19,6 +19,10 @@ class ExecutionTrace:
         duration_ms: float,
         error: str | None = None,
         event_type: str = "completed",
+        skills: list[str] | None = None,
+        confidence: float | None = None,
+        workflow_id: str | None = None,
+        steps: list[dict[str, Any]] | None = None,
     ) -> None:
         self._events.append({
             "request_id": request_id,
@@ -30,6 +34,10 @@ class ExecutionTrace:
             "duration_ms": duration_ms,
             "error": error,
             "event_type": event_type,
+            "skills": skills,
+            "confidence": confidence,
+            "workflow_id": workflow_id,
+            "steps": steps,
         })
 
     def events(self) -> list[dict[str, Any]]:

@@ -18,6 +18,27 @@ class TestExecutionTrace(unittest.TestCase):
         self.assertEqual(events[0]['duration_ms'], 12.5)
 
 
+    def test_records_high_level_execution_context(self):
+        trace = ExecutionTrace()
+        trace.record(
+            request_id="req_003",
+            task_id="task_003",
+            step=0,
+            skill="",
+            backend=None,
+            status="completed",
+            duration_ms=0.0,
+            event_type="planner_decision",
+            skills=["russian-investment-analysis"],
+            confidence=1.0,
+            workflow_id="market-report",
+        )
+        event = trace.events()[0]
+        self.assertEqual(event["event_type"], "planner_decision")
+        self.assertEqual(event["skills"], ["russian-investment-analysis"])
+        self.assertEqual(event["confidence"], 1.0)
+        self.assertEqual(event["workflow_id"], "market-report")
+
     def test_records_event_type(self):
         trace = ExecutionTrace()
         trace.record(
