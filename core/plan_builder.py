@@ -22,11 +22,13 @@ class PlanBuilder:
                 execution_mode = metadata.get("execution_mode", "ordered")
                 backend = metadata.get("backend")
                 tool_slug = metadata.get("tool_slug")
+                workflow_name = metadata.get("workflow")
             else:
                 depends_on = [] if index == 1 else [index - 1]
                 execution_mode = "ordered"
                 backend = None
                 tool_slug = None
+                workflow_name = None
 
             steps.append(
                 {
@@ -37,6 +39,7 @@ class PlanBuilder:
                     "execution_mode": execution_mode,
                     **({"backend": backend} if backend else {}),
                     **({"tool_slug": tool_slug} if tool_slug else {}),
+                    **({"workflow": workflow_name} if workflow_name else {}),
                 }
             )
 

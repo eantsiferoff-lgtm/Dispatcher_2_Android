@@ -204,6 +204,80 @@ class TestPipeline(unittest.TestCase):
             for event in events
         ))
 
+    def test_planner_to_n8n_backend_pipeline(self):
+        from core.execution_router import ExecutionRouter
+        from core.n8n_backend import N8NBackend
+
+        request = Request(
+            request_id="REQ-N8N-001",
+            text="Запусти n8n workflow анализа рынка",
+        )
+
+        decision = PlannerDecision(
+            skills=["n8n"],
+            confidence=1.0,
+        )
+
+        plan = PlanBuilder().build(
+            request.request_id,
+            decision,
+            workflow={
+                "n8n": {
+                    "depends_on": [],
+                    "backend": "n8n",
+                    "execution_mode": "ordered",
+                    "workflow": "market-analysis",
+                },
+            },
+        )
+
+        calls = []
+
+        class TrackingClient:
+            def execute(self, workflow, payload=None):
+                calls.append((workflow, payload))
+                return {
+                    "status": "completed",
+                    "data": {"result": "n8n-workflow-ok"},
+                }
+
+        backend = N8NBackend(client=TrackingClient())
+        router = ExecutionRouter()
+        router.register("n8n", backend)
+
+        task = Task(
+            task_id="TASK-N8N-001",
+            request_id=request.request_id,
+            plan=plan,
+        )
+
+        trace = ExecutionTrace()
+
+        result = Executor(
+            execution_router=router,
+            execution_trace=trace,
+        ).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+        self.assertEqual(
+            calls,
+            [("market-analysis", None)],
+        )
+
+        events = trace.__dict__["_events"]
+        self.assertTrue(any(
+            event["event_type"] == "backend_selected"
+            and event["backend"] == "n8n"
+            for event in events
+        ))
+        self.assertTrue(any(
+            event["event_type"] == "completed"
+            and event["backend"] == "n8n"
+            and event["status"] == "completed"
+            for event in events
+        ))
+
     def test_planner_to_composio_github_pipeline(self):
         import os
         from dotenv import dotenv_values

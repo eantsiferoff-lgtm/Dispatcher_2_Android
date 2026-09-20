@@ -59,6 +59,30 @@ class TestPlanBuilder(unittest.TestCase):
             "GITHUB_GET_THE_AUTHENTICATED_USER",
         )
 
+    def test_builds_n8n_step_with_workflow(self):
+        decision = PlannerDecision(
+            skills=["n8n"],
+            confidence=1.0,
+        )
+
+        workflow = {
+            "n8n": {
+                "depends_on": [],
+                "execution_mode": "ordered",
+                "backend": "n8n",
+                "workflow": "market-analysis",
+            },
+        }
+
+        plan = PlanBuilder().build(
+            "req_n8n_001",
+            decision,
+            workflow=workflow,
+        )
+
+        self.assertEqual(plan.steps[0]["backend"], "n8n")
+        self.assertEqual(plan.steps[0]["workflow"], "market-analysis")
+
     def test_builds_dag_steps_from_workflow_metadata(self):
         decision = PlannerDecision(
             skills=["skill-a", "skill-b", "skill-c"],

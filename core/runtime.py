@@ -137,6 +137,8 @@ class Runtime:
             step["skill"]: {
                 "depends_on": list(step.get("depends_on", [])),
                 "execution_mode": step.get("execution_mode", "ordered"),
+                "backend": step.get("backend"),
+                "workflow": step.get("workflow"),
             }
             for step in workflow.get("steps", [])
             if step.get("skill")
