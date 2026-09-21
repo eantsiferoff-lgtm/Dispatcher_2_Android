@@ -471,5 +471,56 @@ class TestPipeline(unittest.TestCase):
             for event in events
         ))
 
+
+    def test_runtime_full_e2e_with_execution_trace(self):
+        from core.runtime import Runtime
+
+        skills = SkillExecutor()
+
+        def handler(step, task_id):
+            return {"text": "runtime-e2e-ok"}
+
+        skills.register("russian-investment-analysis", handler)
+
+        runtime = Runtime(".", skill_executor=skills)
+
+        request, plan, task, result = runtime.run(
+            "Проанализируй российский фондовый рынок"
+        )
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(task.status, "completed")
+        self.assertIn("russian-investment-analysis", plan.skills)
+        self.assertEqual(plan.steps[0]["backend"], "local")
+
+        events = runtime.execution_trace.events()
+        event_types = [event["event_type"] for event in events]
+
+        for event_type in (
+            "request",
+            "planner_decision",
+            "plan_built",
+            "task_created",
+            "started",
+            "backend_selected",
+            "completed",
+        ):
+            self.assertIn(event_type, event_types)
+
+        self.assertTrue(any(
+            event["event_type"] == "backend_selected"
+            and event["backend"] == "local"
+            and event["skill"] == "russian-investment-analysis"
+            for event in events
+        ))
+
+        self.assertTrue(any(
+            event["event_type"] == "completed"
+            and event["backend"] == "local"
+            and event["skill"] == "russian-investment-analysis"
+            and event["status"] == "completed"
+            for event in events
+        ))
+
 if __name__ == "__main__":
     unittest.main()

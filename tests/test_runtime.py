@@ -294,5 +294,45 @@ workflows:
         self.assertEqual(calls, [])
         self.assertTrue(any("CONFIRM" in warning for warning in result.warnings))
 
+
+    def test_run_propagates_backend_error_to_failed_result_and_trace(self):
+        from core.execution_router import ExecutionRouter
+
+        class FailingBackend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def execute(self, step, task_id):
+                raise RuntimeError("runtime backend boom")
+
+        router = ExecutionRouter()
+        router.register("failing", FailingBackend())
+
+        runtime = Runtime(".", execution_router=router)
+
+        request, plan, task = runtime.prepare(
+            "Проанализируй российский фондовый рынок"
+        )
+        plan.steps[0]["backend"] = "failing"
+
+        result = runtime.executor.execute(task)
+
+        self.assertEqual(request.text, "Проанализируй российский фондовый рынок")
+        self.assertEqual(result.status, "failed")
+        self.assertEqual(task.status, "failed")
+        self.assertEqual(result.task_id, task.task_id)
+
+        events = runtime.execution_trace.events()
+
+        self.assertTrue(any(
+            event["event_type"] == "failed"
+            and event["status"] == "failed"
+            and event["backend"] == "failing"
+            and event["error"] == "runtime backend boom"
+            for event in events
+        ))
+
 if __name__ == "__main__":
     unittest.main()
