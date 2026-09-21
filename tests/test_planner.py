@@ -21,6 +21,12 @@ class TestPlanner(unittest.TestCase):
         self.assertTrue(decision.candidates)
         self.assertTrue(all(0 <= c.score <= 1 for c in decision.candidates))
 
+    def test_translation_request_selects_translation_agent(self):
+        decision = self.planner.plan(
+            "Переведи текст с японского на русский"
+        )
+        self.assertIn("translation-agent", decision.skills)
+
     def test_fallback_is_requested_for_low_confidence(self):
         from core.planner import Planner, PlannerDecision
         planner = Planner.__new__(Planner)

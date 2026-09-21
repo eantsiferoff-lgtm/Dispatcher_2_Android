@@ -29,6 +29,31 @@ class TestPlanBuilder(unittest.TestCase):
         self.assertEqual(plan.steps[1]["execution_mode"], "ordered")
 
 
+    def test_builds_step_from_skill_metadata(self):
+        from core.skill_registry import SkillRegistry
+
+        registry = SkillRegistry("tests/fixtures")
+
+        skill = registry.get("test-skill")
+        self.assertIsNotNone(skill)
+
+        skill.metadata["backend"] = "openai"
+        skill.metadata["execution_mode"] = "ai"
+
+        decision = PlannerDecision(
+            skills=["test-skill"],
+            confidence=1.0,
+        )
+
+        plan = PlanBuilder(registry=registry).build(
+            "req_metadata_001",
+            decision,
+        )
+
+        self.assertEqual(plan.steps[0]["skill"], "test-skill")
+        self.assertEqual(plan.steps[0]["backend"], "openai")
+        self.assertEqual(plan.steps[0]["execution_mode"], "ai")
+
     def test_builds_composio_step_with_tool_slug(self):
         decision = PlannerDecision(
             skills=["github"],

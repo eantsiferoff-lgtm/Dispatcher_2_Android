@@ -45,7 +45,7 @@ class Runtime:
         if self.auto_refresh_lifecycle:
             self.registry.refresh_lifecycle(self.lifecycle)
         self.planner = Planner(self.registry)
-        self.plan_builder = PlanBuilder()
+        self.plan_builder = PlanBuilder(registry=self.registry)
         self.skill_executor = skill_executor or SkillExecutor()
         self.execution_router = execution_router or ExecutionRouter()
         self._request_texts = {}

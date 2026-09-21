@@ -396,5 +396,80 @@ class TestPipeline(unittest.TestCase):
             else:
                 os.environ.pop("N8N_WEBHOOK_URL", None)
 
+    def test_translation_skill_to_openai_backend_pipeline(self):
+        from core.runtime import Runtime
+
+        calls = []
+
+        def runner(request_text):
+            calls.append(request_text)
+            return "Перевод выполнен: こんにちは → Здравствуйте"
+
+        runtime = Runtime(".", openai_runner=runner)
+
+        request, plan, task, result = runtime.run(
+            "Переведи текст с японского на русский"
+        )
+
+        events = runtime.execution_trace.__dict__["_events"]
+
+        self.assertIn("translation-agent", plan.skills)
+        self.assertEqual(plan.steps[0]["skill"], "translation-agent")
+        self.assertEqual(plan.steps[0]["backend"], "openai")
+        self.assertEqual(plan.steps[0]["execution_mode"], "ai")
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(
+            result.text,
+            "Перевод выполнен: こんにちは → Здравствуйте",
+        )
+        self.assertEqual(
+            calls,
+            ["Переведи текст с японского на русский"],
+        )
+
+        self.assertTrue(any(
+            event["event_type"] == "request"
+            for event in events
+        ))
+
+        self.assertTrue(any(
+            event["event_type"] == "planner_decision"
+            and "translation-agent" in event.get("skills", [])
+            for event in events
+        ))
+
+        self.assertTrue(any(
+            event["event_type"] == "plan_built"
+            and "translation-agent" in event.get("skills", [])
+            for event in events
+        ))
+
+        self.assertTrue(any(
+            event["event_type"] == "task_created"
+            for event in events
+        ))
+
+        self.assertTrue(any(
+            event["event_type"] == "started"
+            and event.get("skill") == "translation-agent"
+            for event in events
+        ))
+
+        self.assertTrue(any(
+            event["event_type"] == "backend_selected"
+            and event.get("backend") == "openai"
+            and event.get("skill") == "translation-agent"
+            for event in events
+        ))
+
+        self.assertTrue(any(
+            event["event_type"] == "completed"
+            and event.get("backend") == "openai"
+            and event.get("skill") == "translation-agent"
+            and event.get("status") == "completed"
+            for event in events
+        ))
+
 if __name__ == "__main__":
     unittest.main()

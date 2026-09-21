@@ -7,6 +7,9 @@ from core.planner import PlannerDecision
 
 
 class PlanBuilder:
+    def __init__(self, registry=None):
+        self.registry = registry
+
     def build(
         self,
         request_id: str,
@@ -16,19 +19,37 @@ class PlanBuilder:
         steps = []
 
         for index, skill_id in enumerate(decision.skills, start=1):
+            skill_metadata = {}
+
+            if self.registry is not None:
+                skill = self.registry.get(skill_id)
+                if skill is not None:
+                    skill_metadata = skill.metadata
+
             if workflow and skill_id in workflow:
                 metadata = workflow[skill_id]
+
                 depends_on = list(metadata.get("depends_on", []))
-                execution_mode = metadata.get("execution_mode", "ordered")
-                backend = metadata.get("backend")
+                execution_mode = metadata.get(
+                    "execution_mode",
+                    skill_metadata.get("execution_mode", "ordered"),
+                )
+                backend = metadata.get(
+                    "backend",
+                    skill_metadata.get("backend"),
+                )
                 tool_slug = metadata.get("tool_slug")
                 workflow_name = metadata.get("workflow")
+
             else:
                 depends_on = [] if index == 1 else [index - 1]
-                execution_mode = "ordered"
-                backend = None
-                tool_slug = None
-                workflow_name = None
+                execution_mode = skill_metadata.get(
+                    "execution_mode",
+                    "ordered",
+                )
+                backend = skill_metadata.get("backend")
+                tool_slug = skill_metadata.get("tool_slug")
+                workflow_name = skill_metadata.get("workflow")
 
             steps.append(
                 {
