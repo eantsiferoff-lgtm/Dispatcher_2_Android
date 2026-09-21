@@ -268,6 +268,100 @@ workflows:
             )
 
 
+    def test_runtime_executes_dynamically_added_skill(self):
+        import tempfile
+
+        from core.skill_registry import SkillRegistry
+
+        with tempfile.TemporaryDirectory() as root:
+            skill_dir = Path(root) / "skills" / "dynamic-test-skill"
+            skill_dir.mkdir(parents=True)
+
+            (skill_dir / "SKILL.md").write_text(
+                """---
+name: dynamic-test-skill
+description: Perform dynamic document verification.
+metadata:
+  version: "1.0"
+  capabilities:
+    - document-verification
+  triggers:
+    - проверь документ
+  execution_mode: ordered
+  backend: local
+---
+# Dynamic Test Skill
+
+Created dynamically for the extensibility test.
+""",
+                encoding="utf-8",
+            )
+
+            registry = SkillRegistry(root)
+            skill = registry.get("dynamic-test-skill")
+            self.assertIsNotNone(skill)
+
+            skills = SkillExecutor()
+            calls = []
+
+            def handler(step, task_id):
+                calls.append((step["skill"], task_id))
+                return {"text": "dynamic-skill-executed"}
+
+            skills.register("dynamic-test-skill", handler)
+
+            from core.local_backend import LocalBackend
+            from core.execution_router import ExecutionRouter
+
+            local = LocalBackend(skills)
+            router = ExecutionRouter()
+            router.register("local", local)
+
+            runtime = Runtime(
+                root,
+                execution_router=router,
+                skill_executor=skills,
+            )
+
+            runtime.planner = type(
+                "StubPlanner",
+                (),
+                {
+                    "plan": lambda self, text: __import__(
+                        "core.planner",
+                        fromlist=["PlannerDecision"],
+                    ).PlannerDecision(
+                        skills=["dynamic-test-skill"],
+                        confidence=1.0,
+                    )
+                },
+            )()
+
+            request, plan, task = runtime.prepare("Проверь документ")
+
+            self.assertEqual(
+                plan.steps[0]["skill"],
+                "dynamic-test-skill",
+            )
+            self.assertEqual(
+                plan.steps[0]["backend"],
+                "local",
+            )
+
+            result = runtime.executor.execute(task)
+
+            self.assertEqual(result.status, "completed")
+            self.assertEqual(task.status, "completed")
+            self.assertEqual(
+                result.text,
+                "dynamic-skill-executed",
+            )
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(
+                calls[0][0],
+                "dynamic-test-skill",
+            )
+
     def test_run_requires_confirmation_before_consequential_action(self):
         runtime = Runtime(".")
         calls = []

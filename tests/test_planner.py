@@ -1,3 +1,4 @@
+from pathlib import Path
 import unittest
 
 from core.planner import Planner, PlannerDecision
@@ -26,6 +27,46 @@ class TestPlanner(unittest.TestCase):
             "Переведи текст с японского на русский"
         )
         self.assertIn("translation-agent", decision.skills)
+
+    def test_planner_selects_dynamically_added_skill(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            skill_dir = Path(root) / "skills" / "dynamic-test-skill"
+            skill_dir.mkdir(parents=True)
+
+            (skill_dir / "SKILL.md").write_text(
+                """---
+name: dynamic-test-skill
+description: Perform dynamic document verification.
+metadata:
+  version: "1.0"
+  capabilities:
+    - document-verification
+  triggers:
+    - проверь документ
+---
+# Dynamic Test Skill
+
+Created dynamically for the extensibility test.
+""",
+                encoding="utf-8",
+            )
+
+            registry = SkillRegistry(root)
+            planner = Planner(registry)
+
+            decision = planner.plan("Проверь документ")
+
+            self.assertIn(
+                "dynamic-test-skill",
+                decision.skills,
+            )
+            self.assertTrue(decision.candidates)
+            self.assertTrue(any(
+                candidate.skill_id == "dynamic-test-skill"
+                for candidate in decision.candidates
+            ))
 
     def test_fallback_is_requested_for_low_confidence(self):
         from core.planner import Planner, PlannerDecision

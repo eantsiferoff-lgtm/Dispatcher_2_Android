@@ -1,3 +1,4 @@
+from pathlib import Path
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -54,6 +55,40 @@ class TestSkillRegistry(unittest.TestCase):
 
         self.assertFalse(registry.is_eligible(active))
 
+    def test_discovers_skill_added_without_core_changes(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            skill_dir = Path(root) / "skills" / "new-skill"
+            skill_dir.mkdir(parents=True)
+
+            (skill_dir / "SKILL.md").write_text(
+                """---
+name: new-skill
+description: A dynamically added test skill.
+metadata:
+  capabilities:
+    - test-capability
+  triggers:
+    - run new skill
+---
+# New Skill
+
+This Skill is created only for the extensibility test.
+""",
+                encoding="utf-8",
+            )
+
+            registry = SkillRegistry(root)
+            skill = registry.get("new-skill")
+
+            self.assertIsNotNone(skill)
+            self.assertEqual(skill.name, "new-skill")
+            self.assertIn(
+                "test-capability",
+                skill.metadata.get("capabilities", []),
+            )
+
     def test_discovers_new_skill_automatically(self):
         registry = SkillRegistry("tests/fixtures")
 
@@ -62,6 +97,73 @@ class TestSkillRegistry(unittest.TestCase):
         self.assertIsNotNone(skill)
         self.assertEqual(skill.name, "test-skill")
 
+
+
+    def test_skill_add_remove_and_rediscover_without_core_changes(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as root:
+            skill_dir = Path(root) / "skills" / "dynamic-lifecycle-skill"
+            skill_dir.mkdir(parents=True)
+
+            skill_file = skill_dir / "SKILL.md"
+            skill_file.write_text(
+                """---
+name: dynamic-lifecycle-skill
+description: Skill for add/remove extensibility testing.
+metadata:
+  capabilities:
+    - lifecycle-test
+  triggers:
+    - lifecycle test
+---
+# Dynamic Lifecycle Skill
+Used only for extensibility lifecycle testing.
+""",
+                encoding="utf-8",
+            )
+
+            # ADD → DISCOVER
+            registry = SkillRegistry(root)
+            self.assertIsNotNone(
+                registry.get("dynamic-lifecycle-skill")
+            )
+
+            # REMOVE
+            skill_file.unlink()
+            skill_dir.rmdir()
+
+            # Re-create Registry to simulate a fresh discovery cycle.
+            registry = SkillRegistry(root)
+            self.assertIsNone(
+                registry.get("dynamic-lifecycle-skill")
+            )
+
+            # ADD AGAIN → DISCOVER AGAIN
+            new_skill_dir = Path(root) / "skills" / "dynamic-lifecycle-skill-2"
+            new_skill_dir.mkdir(parents=True)
+
+            (new_skill_dir / "SKILL.md").write_text(
+                """---
+name: dynamic-lifecycle-skill-2
+description: Replacement dynamically discovered skill.
+metadata:
+  capabilities:
+    - lifecycle-test-2
+  triggers:
+    - lifecycle test 2
+---
+# Dynamic Lifecycle Skill 2
+Replacement skill for extensibility testing.
+""",
+                encoding="utf-8",
+            )
+
+            registry = SkillRegistry(root)
+            self.assertIsNotNone(
+                registry.get("dynamic-lifecycle-skill-2")
+            )
 
 if __name__ == "__main__":
     unittest.main()

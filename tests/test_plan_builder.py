@@ -1,3 +1,4 @@
+from pathlib import Path
 import unittest
 
 from core.plan_builder import PlanBuilder
@@ -53,6 +54,63 @@ class TestPlanBuilder(unittest.TestCase):
         self.assertEqual(plan.steps[0]["skill"], "test-skill")
         self.assertEqual(plan.steps[0]["backend"], "openai")
         self.assertEqual(plan.steps[0]["execution_mode"], "ai")
+
+    def test_builds_step_from_dynamically_added_skill_metadata(self):
+        import tempfile
+
+        from core.skill_registry import SkillRegistry
+
+        with tempfile.TemporaryDirectory() as root:
+            skill_dir = Path(root) / "skills" / "dynamic-test-skill"
+            skill_dir.mkdir(parents=True)
+
+            (skill_dir / "SKILL.md").write_text(
+                """---
+name: dynamic-test-skill
+description: Perform dynamic document verification.
+metadata:
+  version: "1.0"
+  capabilities:
+    - document-verification
+  triggers:
+    - проверь документ
+  execution_mode: ordered
+  backend: local
+---
+# Dynamic Test Skill
+
+Created dynamically for the extensibility test.
+""",
+                encoding="utf-8",
+            )
+
+            registry = SkillRegistry(root)
+            skill = registry.get("dynamic-test-skill")
+
+            self.assertIsNotNone(skill)
+
+            decision = PlannerDecision(
+                skills=["dynamic-test-skill"],
+                confidence=1.0,
+            )
+
+            plan = PlanBuilder(registry=registry).build(
+                "req_dynamic_001",
+                decision,
+            )
+
+            self.assertEqual(
+                plan.steps[0]["skill"],
+                "dynamic-test-skill",
+            )
+            self.assertEqual(
+                plan.steps[0]["backend"],
+                "local",
+            )
+            self.assertEqual(
+                plan.steps[0]["execution_mode"],
+                "ordered",
+            )
 
     def test_builds_composio_step_with_tool_slug(self):
         decision = PlannerDecision(
