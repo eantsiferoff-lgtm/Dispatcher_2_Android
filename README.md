@@ -1,6 +1,6 @@
 # Dispatcher 2.0 — working Composio integration
 
-A modular personal AI dispatcher: **request → registry → skills → Composio → external apps**.
+A modular personal AI dispatcher: **request → registry → planner → plan/DAG → executor → backend → result**.
 
 Composio Sessions are the integration boundary. A session is scoped to `DISPATCHER_USER_ID`, can discover tools dynamically, and can expose the same session through a hosted MCP endpoint. Current Composio docs recommend Sessions over the legacy standalone MCP-server API.
 
@@ -61,19 +61,25 @@ The command creates a Composio Session with `mcp=True` and prints its hosted MCP
 ## Architecture
 
 ```text
-User
+User request
   ↓
 Master Dispatcher
   ↓
-Skill Registry + Routing
+Skill Registry
   ↓
-One or more domain Skills
+Planner
   ↓
-Tool/Approval boundary
+Plan / DAG
   ↓
-Composio Session
+Executor + Execution Router
   ↓
-Gmail / Drive / GitHub / Slack / ...
+Backend selected for the Skill
+  ├── LocalBackend
+  ├── OpenAIBackend
+  ├── ComposioBackend
+  └── N8NBackend
+  ↓
+Result
 ```
 
-New skills are added under `skills/<skill-id>/SKILL.md` and registered in `registry.yaml`; the dispatcher core does not need to be rewritten.
+Skills are discovered dynamically from `skills/<skill-id>/SKILL.md`. A new domain Skill can be added without rewriting the dispatcher core. Skill metadata defines capabilities, triggers, lifecycle information, and execution configuration.
