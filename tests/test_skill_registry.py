@@ -99,6 +99,29 @@ This Skill is created only for the extensibility test.
 
 
 
+    def test_delete_skill_and_restore(self):
+        registry = SkillRegistry("tests/fixtures")
+        skill = registry.get("test-skill")
+
+        self.assertIsNotNone(skill)
+        self.assertTrue(registry.is_eligible(skill))
+
+        deleted = registry.delete_skill("test-skill")
+
+        self.assertIsNotNone(deleted)
+        self.assertEqual(deleted.lifecycle_status, "deleted")
+        self.assertFalse(registry.is_eligible(deleted))
+        self.assertNotIn(
+            "test-skill",
+            {item.skill_id for item in registry.active_domain()},
+        )
+
+        restored = registry.restore_skill("test-skill")
+
+        self.assertIsNotNone(restored)
+        self.assertEqual(restored.lifecycle_status, "active")
+        self.assertTrue(registry.is_eligible(restored))
+
     def test_skill_add_remove_and_rediscover_without_core_changes(self):
         import tempfile
         from pathlib import Path

@@ -129,6 +129,18 @@ class SkillRegistry:
             statuses[skill.skill_id] = lifecycle.refresh(skill.skill_id, skill.metadata)
         return statuses
 
+    def delete_skill(self, skill_id: str, lifecycle=None) -> SkillRecord | None:
+        skill = self.get(skill_id)
+        if skill is None:
+            return None
+
+        if lifecycle is None:
+            from .skill_lifecycle import SkillLifecycleManager
+            lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
+
+        lifecycle.delete(skill.metadata, skill_id=skill_id)
+        return skill
+
     def restore_skill(self, skill_id: str, lifecycle=None) -> SkillRecord | None:
         skill = self.get(skill_id)
         if skill is None:

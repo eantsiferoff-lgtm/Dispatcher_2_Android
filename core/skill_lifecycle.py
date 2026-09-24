@@ -53,6 +53,13 @@ class SkillLifecycleManager:
         if self.store is not None and skill_id:
             self.store.save(skill_id, lifecycle)
 
+    def delete(self, metadata: dict[str, Any], *, skill_id: str | None = None) -> None:
+        lifecycle = metadata.setdefault("lifecycle", {})
+        lifecycle["status"] = DELETED
+
+        if self.store is not None and skill_id:
+            self.store.save(skill_id, lifecycle)
+
     def restore(self, metadata: dict[str, Any], *, skill_id: str | None = None, now: datetime | None = None) -> None:
         lifecycle = metadata.setdefault("lifecycle", {})
         lifecycle["status"] = ACTIVE
