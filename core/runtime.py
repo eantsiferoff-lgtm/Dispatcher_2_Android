@@ -95,6 +95,10 @@ class Runtime:
         if self.execution_trace is not None:
             self.execution_trace.record(request_id=request.request_id, task_id="", step=0, skill="", backend=None, status="received", duration_ms=0.0, event_type="request")
         decision = self.planner.plan(request.text)
+
+        if not decision.workflow_id:
+            decision.workflow_id = self._select_workflow(decision)
+
         if self.execution_trace is not None:
             self.execution_trace.record(request_id=request.request_id, task_id="", step=0, skill="", backend=None, status="selected", duration_ms=0.0, event_type="planner_decision", skills=list(decision.skills), confidence=decision.confidence, workflow_id=decision.workflow_id)
 
@@ -136,6 +140,29 @@ class Runtime:
 
         result = self.executor.execute(task)
         return request, plan, task, result
+
+    def _select_workflow(self, decision) -> str | None:
+        selected_skills = set(decision.skills)
+
+        if not selected_skills:
+            return None
+
+        matches = []
+
+        for workflow_id, workflow in self.config.workflows.items():
+            workflow_skills = {
+                step["skill"]
+                for step in workflow.get("steps", [])
+                if step.get("skill")
+            }
+
+            if workflow_skills == selected_skills:
+                matches.append(workflow_id)
+
+        if len(matches) == 1:
+            return matches[0]
+
+        return None
 
     def _workflow_metadata(
         self,
