@@ -31,6 +31,21 @@ class TestSkillLifecycle(unittest.TestCase):
         }
         self.assertEqual(self.manager.status(meta, now=self.now), "archived")
 
+    def test_deleted_status_is_terminal(self):
+        meta = {"lifecycle": {"status": "deleted"}}
+        self.assertEqual(self.manager.status(meta, now=self.now), "deleted")
+
+    def test_unknown_status_does_not_override_time_based_lifecycle(self):
+        meta = {
+            "lifecycle": {
+                "status": "unknown",
+                "last_used_at": (
+                    self.now - timedelta(days=200)
+                ).isoformat(),
+            }
+        }
+        self.assertEqual(self.manager.status(meta, now=self.now), "dormant")
+
     def test_record_usage_updates_metadata(self):
         meta = {}
         self.manager.record_usage(meta, now=self.now)

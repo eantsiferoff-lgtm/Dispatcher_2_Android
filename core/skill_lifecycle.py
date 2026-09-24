@@ -10,6 +10,7 @@ from .skill_lifecycle_store import SkillLifecycleStore
 ACTIVE = "active"
 DORMANT = "dormant"
 ARCHIVED = "archived"
+DELETED = "deleted"
 
 
 @dataclass(frozen=True)
@@ -25,6 +26,9 @@ class SkillLifecycleManager:
 
     def status(self, metadata: dict[str, Any], *, now: datetime | None = None) -> str:
         lifecycle = metadata.get("lifecycle") or {}
+        if lifecycle.get("status") == DELETED:
+            return DELETED
+
         last_used_at = lifecycle.get("last_used_at")
 
         if not last_used_at:
