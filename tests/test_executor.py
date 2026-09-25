@@ -429,6 +429,124 @@ class TestExecutor(unittest.TestCase):
         self.assertIsNotNone(executor.dag_scheduler)
         self.assertEqual(executor.dag_scheduler.max_parallel_skills, 2)
 
+    def test_continues_from_persisted_completed_step(self):
+        from core.execution_router import ExecutionRouter
+
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") in {"skill-a", "skill-b"}
+
+            def execute(self, step, task_id):
+                calls.append(step["skill"])
+                return {
+                    "status": "completed",
+                    "task_id": task_id,
+                    "text": step["skill"],
+                }
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+
+        plan = Plan(
+            request_id="req_continue",
+            skills=["skill-a", "skill-b"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "skill-a",
+                    "status": "completed",
+                    "depends_on": [],
+                    "execution_mode": "ordered",
+                    "backend": "test",
+                    "result": "skill-a",
+                },
+                {
+                    "step": 2,
+                    "skill": "skill-b",
+                    "status": "pending",
+                    "depends_on": [1],
+                    "execution_mode": "ordered",
+                    "backend": "test",
+                },
+            ],
+        )
+
+        task = Task(
+            task_id="task_continue",
+            request_id="req_continue",
+            plan=plan,
+            status="failed",
+            current_step=1,
+        )
+
+        result = Executor(execution_router=router).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(calls, ["skill-b"])
+        self.assertEqual(task.plan.steps[0]["status"], "completed")
+        self.assertEqual(task.plan.steps[1]["status"], "completed")
+
+    def test_continues_after_interrupted_running_step(self):
+        from core.execution_router import ExecutionRouter
+
+        calls = []
+
+        class Backend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def can_execute(self, step):
+                return step.get("skill") == "skill-a"
+
+            def execute(self, step, task_id):
+                calls.append(step["skill"])
+                return {
+                    "status": "completed",
+                    "task_id": task_id,
+                    "text": "continued",
+                }
+
+        router = ExecutionRouter()
+        router.register("test", Backend())
+
+        plan = Plan(
+            request_id="req_interrupted",
+            skills=["skill-a"],
+            steps=[
+                {
+                    "step": 1,
+                    "skill": "skill-a",
+                    "status": "running",
+                    "depends_on": [],
+                    "execution_mode": "ordered",
+                    "backend": "test",
+                },
+            ],
+        )
+
+        task = Task(
+            task_id="task_interrupted",
+            request_id="req_interrupted",
+            plan=plan,
+            status="running",
+            current_step=1,
+        )
+
+        result = Executor(execution_router=router).execute(task)
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(calls, ["skill-a"])
+        self.assertEqual(task.plan.steps[0]["status"], "completed")
+
     def test_accepts_max_parallel_skills(self):
         executor = Executor(max_parallel_skills=2)
         self.assertEqual(executor.max_parallel_skills, 2)

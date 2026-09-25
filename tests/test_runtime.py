@@ -65,6 +65,112 @@ class TestRuntime(unittest.TestCase):
         self.assertEqual(task.status, "pending")
 
 
+    def test_prepare_persists_task_state(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            runtime = Runtime(root, data_root=root)
+
+            request, plan, task = runtime.prepare(
+                "Проанализируй российский фондовый рынок"
+            )
+
+            path = Path(root) / "tasks" / f"{task.task_id}.json"
+            self.assertTrue(path.exists())
+
+    def test_restore_task_loads_persisted_task(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            runtime = Runtime(root, data_root=root)
+
+            request, plan, task = runtime.prepare(
+                "Проанализируй российский фондовый рынок"
+            )
+
+            restored = runtime.restore_task(task.task_id)
+
+            self.assertIsNotNone(restored)
+            self.assertEqual(restored.task_id, task.task_id)
+            self.assertEqual(restored.request_id, request.request_id)
+            self.assertEqual(restored.status, "pending")
+            self.assertIsNotNone(restored.plan)
+
+    def test_completed_task_state_is_persisted(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as root:
+            skill_executor = SkillExecutor()
+            skill_executor.register(
+                "russian-investment-analysis",
+                lambda step, task_id: {"text": "ok"},
+            )
+
+            runtime = Runtime(
+                root,
+                data_root=root,
+                skill_executor=skill_executor,
+            )
+
+            request, plan, task, result = runtime.run(
+                "Проанализируй российский фондовый рынок"
+            )
+
+            restored = runtime.restore_task(task.task_id)
+
+            self.assertIsNotNone(restored)
+            self.assertEqual(result.status, "completed")
+            self.assertEqual(restored.status, "completed")
+            self.assertEqual(restored.current_step, task.current_step)
+
+    def test_failed_task_state_is_persisted(self):
+        import tempfile
+        from core.execution_router import ExecutionRouter
+
+        class FailingBackend:
+            priority = 100
+
+            def available(self):
+                return True
+
+            def execute(self, step, task_id):
+                raise RuntimeError("persistent failure")
+
+        with tempfile.TemporaryDirectory() as root:
+            router = ExecutionRouter()
+            router.register("failing", FailingBackend())
+
+            runtime = Runtime(
+                root,
+                data_root=root,
+                execution_router=router,
+            )
+
+            request, plan, task = runtime.prepare(
+                "Проанализируй российский фондовый рынок"
+            )
+
+            task.plan.steps = [
+                {
+                    "step": 1,
+                    "skill": "test-skill",
+                    "status": "pending",
+                    "execution_mode": "ordered",
+                    "depends_on": [],
+                    "backend": "failing",
+                }
+            ]
+
+            result = runtime.executor.execute(task)
+            runtime.task_state_store.save(task)
+
+            restored = runtime.restore_task(task.task_id)
+
+            self.assertEqual(result.status, "failed")
+            self.assertIsNotNone(restored)
+            self.assertEqual(restored.status, "failed")
+            self.assertIn("persistent failure", restored.errors)
+
     def test_run_executes_full_pipeline(self):
         skill_executor = SkillExecutor()
         skill_executor.register("russian-investment-analysis", lambda step, task_id: {"text": "ok"})

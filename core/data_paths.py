@@ -6,6 +6,7 @@ class DataPaths:
     def __init__(self, root: str | Path):
         self.root = Path(root)
         self.state = self.root / "state"
+        self.tasks = self.root / "tasks"
         self.requests = self.root / "requests"
         self.results = self.root / "results"
         self.traces = self.root / "traces"

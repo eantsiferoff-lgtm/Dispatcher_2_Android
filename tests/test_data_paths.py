@@ -13,6 +13,7 @@ class TestDataPaths(unittest.TestCase):
 
             self.assertEqual(paths.root, root)
             self.assertEqual(paths.state, root / "state")
+            self.assertEqual(paths.tasks, root / "tasks")
             self.assertEqual(paths.requests, root / "requests")
             self.assertEqual(paths.results, root / "results")
             self.assertEqual(paths.traces, root / "traces")

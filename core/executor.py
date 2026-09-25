@@ -152,6 +152,11 @@ class Executor:
         task.status = "running"
         task.current_step = 0
         task.errors.clear()
+
+        for step in task.plan.steps:
+            if step.get("status") == "running":
+                step["status"] = "pending"
+
         result_text = ""
         result_artifacts = []
         result_sources = []

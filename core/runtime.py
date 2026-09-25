@@ -20,6 +20,7 @@ from .skill_lifecycle import SkillLifecycleManager
 from .skill_lifecycle_store import JsonSkillLifecycleStore
 from .config import DispatcherConfig
 from .data_paths import DataPaths
+from .task_state_store import TaskStateStore
 
 
 class Runtime:
@@ -39,6 +40,7 @@ class Runtime:
         self.data_paths = DataPaths(self.data_root)
         self.config = DispatcherConfig.from_file(self.root / "dispatcher.yaml")
         self.lifecycle_store = JsonSkillLifecycleStore(self.data_paths.state / "skill_lifecycle.json")
+        self.task_state_store = TaskStateStore(self.data_paths.tasks)
         self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
         self.lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
         self.auto_refresh_lifecycle = auto_refresh_lifecycle
@@ -124,7 +126,11 @@ class Runtime:
         if self.execution_trace is not None:
             self.execution_trace.record(request_id=request.request_id, task_id=task_id, step=0, skill="", backend=None, status="built", duration_ms=0.0, event_type="plan_built", skills=list(plan.skills), steps=list(plan.steps))
             self.execution_trace.record(request_id=request.request_id, task_id=task_id, step=0, skill="", backend=None, status=task.status, duration_ms=0.0, event_type="task_created")
+        self.task_state_store.save(task)
         return request, plan, task
+
+    def restore_task(self, task_id: str) -> Task | None:
+        return self.task_state_store.load(task_id)
 
     def run(
         self,
@@ -139,6 +145,7 @@ class Runtime:
         )
 
         result = self.executor.execute(task)
+        self.task_state_store.save(task)
         return request, plan, task, result
 
     def _select_workflow(self, decision) -> str | None:
