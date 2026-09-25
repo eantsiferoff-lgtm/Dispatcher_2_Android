@@ -3,3 +3,5 @@ python-dotenv>=1.0
 composio>=0.19.0
 composio-openai-agents>=0.1.0
 openai-agents>=0.2.0
+starlette>=1.6.0
+uvicorn>=0.52.4
