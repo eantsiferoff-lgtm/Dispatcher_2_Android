@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import json
 from uuid import uuid4
 
 from .executor import Executor
@@ -21,6 +22,8 @@ from .skill_lifecycle_store import JsonSkillLifecycleStore
 from .config import DispatcherConfig
 from .data_paths import DataPaths
 from .task_state_store import TaskStateStore
+from .result_aggregator import ResultAggregator
+from .verification import VerificationLayer
 
 
 class Runtime:
@@ -41,6 +44,8 @@ class Runtime:
         self.config = DispatcherConfig.from_file(self.root / "dispatcher.yaml")
         self.lifecycle_store = JsonSkillLifecycleStore(self.data_paths.state / "skill_lifecycle.json")
         self.task_state_store = TaskStateStore(self.data_paths.tasks)
+        self.result_aggregator = ResultAggregator()
+        self.verification = VerificationLayer()
         self.registry = SkillRegistry(self.root, lifecycle_store=self.lifecycle_store)
         self.lifecycle = SkillLifecycleManager(store=self.lifecycle_store)
         self.auto_refresh_lifecycle = auto_refresh_lifecycle
@@ -145,6 +150,36 @@ class Runtime:
         )
 
         result = self.executor.execute(task)
+
+        normalized_results = []
+        for step in task.plan.steps:
+            step_result = step.get("result")
+            if not isinstance(step_result, dict):
+                continue
+
+            normalized_results.append(
+                self.result_aggregator.normalize(
+                    step.get("skill", ""),
+                    Result(
+                        task_id=task.task_id,
+                        status=step_result.get("status", "completed"),
+                        text=str(step_result.get("text", "")),
+                        artifacts=list(step_result.get("artifacts", [])),
+                        sources=list(step_result.get("sources", [])),
+                        warnings=list(step_result.get("warnings", [])),
+                    ),
+                )
+            )
+
+        if normalized_results:
+            aggregated = self.result_aggregator.aggregate(normalized_results)
+            if len(normalized_results) == 1:
+                result.text = str(aggregated["data"][0])
+            else:
+                result.text = json.dumps(aggregated["data"], ensure_ascii=False)
+            result.status = aggregated["status"]
+
+        self.verification.verify(result)
         self.task_state_store.save(task)
         return request, plan, task, result
 

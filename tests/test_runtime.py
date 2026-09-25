@@ -1,7 +1,7 @@
 import unittest
 from pathlib import Path
 
-from core.models import Request, Plan, Task
+from core.models import Request, Plan, Task, Result
 from core.runtime import Runtime
 from core.skill_executor import SkillExecutor
 
@@ -182,6 +182,220 @@ class TestRuntime(unittest.TestCase):
         self.assertEqual(result.status, "completed")
         self.assertEqual(result.task_id, task.task_id)
 
+
+    def test_run_exposes_step_results_for_aggregation(self):
+        skill_executor = SkillExecutor()
+        skill_executor.register(
+            "russian-investment-analysis",
+            lambda step, task_id: {"text": "analysis result"},
+        )
+
+        runtime = Runtime(".", skill_executor=skill_executor)
+        request, plan, task, result = runtime.run(
+            "Проанализируй российский фондовый рынок"
+        )
+
+        step_results = [
+            step.get("result")
+            for step in task.plan.steps
+            if step.get("result") is not None
+        ]
+
+        self.assertEqual(len(step_results), 1)
+        self.assertEqual(step_results[0]["text"], "analysis result")
+
+        normalized = runtime.result_aggregator.normalize(
+            "russian-investment-analysis",
+            Result(
+                task_id=task.task_id,
+                status="completed",
+                text=step_results[0]["text"],
+            ),
+        )
+
+        aggregated = runtime.result_aggregator.aggregate([normalized])
+
+        self.assertEqual(aggregated["status"], "completed")
+        self.assertEqual(aggregated["data"], ["analysis result"])
+
+    def test_run_returns_aggregated_step_results(self):
+        from core.planner import PlannerDecision
+
+        skill_executor = SkillExecutor()
+        skill_executor.register(
+            "skill-a",
+            lambda step, task_id: {"status": "completed", "text": "A"},
+        )
+        skill_executor.register(
+            "skill-b",
+            lambda step, task_id: {"status": "completed", "text": "B"},
+        )
+
+        runtime = Runtime(".", skill_executor=skill_executor)
+        runtime.planner = type(
+            "StubPlanner",
+            (),
+            {
+                "plan": lambda self, text: PlannerDecision(
+                    skills=["skill-a", "skill-b"],
+                    workflow_id=None,
+                    confidence=1.0,
+                )
+            },
+        )()
+
+        request, plan, task, result = runtime.run("test multi-skill aggregation")
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.text, "[\"A\", \"B\"]")
+        self.assertEqual(
+            [step["result"]["text"] for step in task.plan.steps],
+            ["A", "B"],
+        )
+        self.assertEqual(result.text, '["A", "B"]')
+
+    def test_run_aggregates_parallel_step_results(self):
+        import tempfile
+
+        from core.planner import PlannerDecision
+
+        with tempfile.TemporaryDirectory() as root:
+            skills = SkillExecutor()
+            skills.register(
+                "skill-a",
+                lambda step, task_id: {"status": "completed", "text": "A"},
+            )
+            skills.register(
+                "skill-b",
+                lambda step, task_id: {"status": "completed", "text": "B"},
+            )
+
+            root_path = Path(root)
+            (root_path / "dispatcher.yaml").write_text(
+                """version: "2.0"
+registry: registry.yaml
+routing: routing.yaml
+orchestration:
+  allow_multi_skill: true
+  max_parallel_skills: 4
+workflows:
+  parallel-test:
+    steps:
+      - skill: skill-a
+        depends_on: []
+        execution_mode: parallel
+      - skill: skill-b
+        depends_on: []
+        execution_mode: parallel
+""",
+                encoding="utf-8",
+            )
+
+            runtime = Runtime(root_path, skill_executor=skills)
+            runtime.planner = type(
+                "StubPlanner",
+                (),
+                {
+                    "plan": lambda self, text: PlannerDecision(
+                        skills=["skill-a", "skill-b"],
+                        workflow_id="parallel-test",
+                        confidence=1.0,
+                    )
+                },
+            )()
+
+            request, plan, task, result = runtime.run("parallel aggregation")
+
+            self.assertEqual(result.status, "completed")
+            self.assertEqual(result.text, '["A", "B"]')
+            self.assertEqual(
+                [step["result"]["text"] for step in task.plan.steps],
+                ["A", "B"],
+            )
+            self.assertEqual(
+                [step["execution_mode"] for step in task.plan.steps],
+                ["parallel", "parallel"],
+            )
+
+    def test_run_preserves_single_result_text(self):
+        from core.planner import PlannerDecision
+
+        skills = SkillExecutor()
+        skills.register(
+            "skill-a",
+            lambda step, task_id: {"status": "completed", "text": "A"},
+        )
+
+        runtime = Runtime(".", skill_executor=skills)
+        runtime.planner = type(
+            "StubPlanner",
+            (),
+            {
+                "plan": lambda self, text: PlannerDecision(
+                    skills=["skill-a"],
+                    workflow_id=None,
+                    confidence=1.0,
+                )
+            },
+        )()
+
+        request, plan, task, result = runtime.run("single result contract")
+
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(result.text, "A")
+
+    def test_run_integrates_verification(self):
+        from core.planner import PlannerDecision
+
+        skills = SkillExecutor()
+        skills.register(
+            "skill-a",
+            lambda step, task_id: {"status": "completed", "text": "A"},
+        )
+
+        runtime = Runtime(".", skill_executor=skills)
+        runtime.planner = type(
+            "StubPlanner",
+            (),
+            {
+                "plan": lambda self, text: PlannerDecision(
+                    skills=["skill-a"],
+                    workflow_id=None,
+                    confidence=1.0,
+                )
+            },
+        )()
+
+        calls = []
+
+        class StubVerification:
+            def verify(self, result):
+                calls.append(result)
+                return {"status": "verified", "checks": []}
+
+        runtime.verification = StubVerification()
+
+        runtime.run("verification integration")
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].text, "A")
+
+    def test_run_verifies_final_result(self):
+        skill_executor = SkillExecutor()
+        skill_executor.register(
+            "russian-investment-analysis",
+            lambda step, task_id: {"text": "verified result"},
+        )
+
+        runtime = Runtime(".", skill_executor=skill_executor)
+        request, plan, task, result = runtime.run(
+            "Проанализируй российский фондовый рынок"
+        )
+
+        verification = runtime.verification.verify(result)
+
+        self.assertEqual(verification["status"], "verified")
+        self.assertEqual(verification["checks"], [])
 
     def test_run_uses_execution_router_backend(self):
         from core.execution_router import ExecutionRouter
